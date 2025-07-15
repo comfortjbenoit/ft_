@@ -63,6 +63,13 @@ class InventoryApp:
         frame = ttk.Frame(self.root, padding=10)
         frame.pack(fill='both', expand=True)
 
+        # Menu for table editor
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        store_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Stores", menu=store_menu)
+        store_menu.add_command(label="Open Table Editor", command=self.open_table_editor)
+
         btn_template = ttk.Button(frame, text="Import Template", command=self.import_template)
         btn_template.grid(row=0, column=0, padx=5, pady=5)
 
@@ -132,7 +139,6 @@ class InventoryApp:
     def update_store_status_display(self):
         check, cross = "\u2714", "\u2716"
         for i, store in enumerate(STORE_COL1):
-            # Make sure we compare with zero-padded string keys
             uploaded = store in self.data
             symbol = check if uploaded else cross
             self.store_labels_col1[i]['text'] = f"{int(store):3} {symbol}"
@@ -188,7 +194,6 @@ class InventoryApp:
                 raise ValueError(f"Sheet too small: found {sheet.nrows} rows and {sheet.ncols} columns.")
             try:
                 store_cell = sheet.cell_value(2, 6)  # G3
-                # Convert to string, strip .0 if float, zero-pad
                 if isinstance(store_cell, float):
                     store = f"{int(store_cell):03}"
                 else:
@@ -224,7 +229,6 @@ class InventoryApp:
         for path in paths:
             try:
                 store, inventory, foil = self.load_excel_file(path)
-                # Ensure store key is zero-padded string
                 store = f"{int(float(store)):03}"
                 self.data[store] = {"inventory": inventory, "foil": foil}
                 imported_stores.append(store)
@@ -339,6 +343,79 @@ class InventoryApp:
                 self.status.config(text=f"Data imported from {os.path.basename(import_path)}")
             except Exception as e:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
+
+    def open_table_editor(self):
+        # Table-based editor for all imported stores
+        editor = tk.Toplevel(self.root)
+        editor.title("Store Data Table Editor")
+        editor.geometry("1000x600")
+        editor_frame = ttk.Frame(editor, padding=10)
+        editor_frame.pack(fill='both', expand=True)
+
+        top_frame = ttk.Frame(editor_frame)
+        top_frame.pack(fill='x')
+        ttk.Label(top_frame, text="Double-click any cell to edit.").pack(side="left", padx=5, pady=5)
+        ttk.Button(top_frame, text="Save All Changes", command=lambda: self.save_table_edits(tree, editor)).pack(side="right", padx=5, pady=5)
+
+        # Columns: Store, Inventory[0..29], Foil[0..3]
+        columns = ["Store"] + [f"Inv{i+1}" for i in range(30)] + [f"Foil{i+1}" for i in range(4)]
+        tree = ttk.Treeview(editor_frame, columns=columns, show="headings", height=20)
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=60 if col != "Store" else 70, anchor='center', minwidth=45, stretch=True)
+        tree.pack(fill='both', expand=True)
+
+        # Fill rows
+        for store in sorted(self.data.keys(), key=lambda x: (len(x), x)):
+            inv = self.data[store].get("inventory", [""]*30)
+            foil = self.data[store].get("foil", [""]*4)
+            values = [store] + [str(x) for x in inv] + [str(x) for x in foil]
+            tree.insert("", "end", values=values)
+
+        # Editing logic
+        def on_double_click(event):
+            region = tree.identify("region", event.x, event.y)
+            if region != "cell":
+                return
+            rowid = tree.identify_row(event.y)
+            col = tree.identify_column(event.x)
+            col_index = int(col.replace("#", "")) - 1
+            if col_index == 0:  # Don't allow editing store number
+                return
+            x, y, width, height = tree.bbox(rowid, col)
+            value = tree.set(rowid, columns[col_index])
+            # Create entry widget
+            entry = tk.Entry(tree, width=8)
+            entry.place(x=x, y=y, width=width, height=height)
+            entry.insert(0, value)
+            entry.focus()
+
+            def on_entry_confirm(event=None):
+                newval = entry.get()
+                tree.set(rowid, columns[col_index], newval)
+                entry.destroy()
+
+            entry.bind("<Return>", on_entry_confirm)
+            entry.bind("<FocusOut>", lambda e: entry.destroy())
+
+        tree.bind("<Double-1>", on_double_click)
+
+    def save_table_edits(self, tree, editor):
+        # Save all edits from the table back into self.data
+        for rowid in tree.get_children():
+            values = tree.item(rowid)["values"]
+            if not values:
+                continue
+            store = f"{int(float(values[0])):03}"
+            inv = [str(x) for x in values[1:31]]
+            foil = [str(x) for x in values[31:35]]
+            self.data[store] = {"inventory": inv, "foil": foil}
+        self.save_data()
+        self.update_store_status_display()
+        self.update_imported_stores_display()
+        messagebox.showinfo("Saved", "All table edits have been saved.")
+        editor.lift()
+        self.status.config(text="All table edits saved.")
 
 def main():
     root = tk.Tk()
