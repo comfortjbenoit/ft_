@@ -354,110 +354,108 @@ class InventoryApp:
             except Exception as e:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
-def open_table_editor(self):
-    # Table-based editor: columns=store numbers, first column=item names from template
-    if "item_names" not in self.template or not self.template["item_names"]:
-        messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
-        return
-
-    item_names = self.template["item_names"]
-    if not item_names:
-        messagebox.showerror("No Item Names", "No item names found in template.")
-        return
-
-    editor = tk.Toplevel(self.root)
-    editor.title("Inventory Data Table Editor")
-    editor.geometry("1200x700")
-    editor_frame = ttk.Frame(editor, padding=10)
-    editor_frame.pack(fill='both', expand=True)
-
-    # Scrollbars
-    xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
-    xscroll.pack(side="bottom", fill="x")
-    yscroll = tk.Scrollbar(editor_frame, orient="vertical")
-    yscroll.pack(side="right", fill="y")
-
-    # Table: first column is "Item", then store columns
-    columns = ["Item"] + ALL_STORES
-    tree = ttk.Treeview(
-        editor_frame,
-        columns=columns,
-        show="headings",
-        height=min(len(item_names), 25),
-        xscrollcommand=xscroll.set,
-        yscrollcommand=yscroll.set
-    )
-    xscroll.config(command=tree.xview)
-    yscroll.config(command=tree.yview)
-
-    for col in columns:
-        tree.heading(col, text=col)
-        if col == "Item":
-            tree.column(col, width=180, anchor='w', minwidth=120, stretch=False)
-        else:
-            tree.column(col, width=60, anchor='center', minwidth=45, stretch=True)
-    tree.pack(side="left", fill="both", expand=True)
-
-    # Add rows: first cell is item name, then inventory values per store
-    for idx, item_name in enumerate(item_names):
-        row_vals = [item_name]
-        for store in ALL_STORES:
-            inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
-            val = inv[idx] if idx < len(inv) else ""
-            row_vals.append(str(val))
-        tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
-
-    # Cell editing logic
-    def on_double_click(event):
-        region = tree.identify("region", event.x, event.y)
-        if region != "cell":
+    def open_table_editor(self):
+        # Table-based editor: first column is item name, then store columns
+        if "item_names" not in self.template or not self.template["item_names"]:
+            messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
             return
-        rowid = tree.identify_row(event.y)
-        col = tree.identify_column(event.x)
-        col_index = int(col.replace("#", "")) - 1
-        if rowid == "" or col_index == 0:  # Do not edit item names
+
+        item_names = self.template["item_names"]
+        if not item_names:
+            messagebox.showerror("No Item Names", "No item names found in template.")
             return
-        x, y, width, height = tree.bbox(rowid, col)
-        value = tree.set(rowid, columns[col_index])
-        entry = tk.Entry(tree, width=8)
-        entry.place(x=x, y=y, width=width, height=height)
-        entry.insert(0, value)
-        entry.focus()
 
-        def on_entry_confirm(event=None):
-            newval = entry.get()
-            tree.set(rowid, columns[col_index], newval)
-            entry.destroy()
+        editor = tk.Toplevel(self.root)
+        editor.title("Inventory Data Table Editor")
+        editor.geometry("1200x700")
+        editor_frame = ttk.Frame(editor, padding=10)
+        editor_frame.pack(fill='both', expand=True)
 
-        entry.bind("<Return>", on_entry_confirm)
-        entry.bind("<FocusOut>", lambda e: entry.destroy())
+        # Scrollbars
+        xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
+        xscroll.pack(side="bottom", fill="x")
+        yscroll = tk.Scrollbar(editor_frame, orient="vertical")
+        yscroll.pack(side="right", fill="y")
 
-    tree.bind("<Double-1>", on_double_click)
+        # Table: first column is "Item", then store columns
+        columns = ["Item"] + ALL_STORES
+        tree = ttk.Treeview(
+            editor_frame,
+            columns=columns,
+            show="headings",
+            height=min(len(item_names), 25),
+            xscrollcommand=xscroll.set,
+            yscrollcommand=yscroll.set
+        )
+        xscroll.config(command=tree.xview)
+        yscroll.config(command=tree.yview)
 
-    # Save button
-    def save_table_edits():
-        for idx, rowid in enumerate(tree.get_children()):
-            values = tree.item(rowid)["values"]
-            item_name = values[0]
-            for col_idx, store in enumerate(ALL_STORES, start=1):
-                val = values[col_idx]
+        for col in columns:
+            tree.heading(col, text=col)
+            if col == "Item":
+                tree.column(col, width=180, anchor='w', minwidth=120, stretch=False)
+            else:
+                tree.column(col, width=60, anchor='center', minwidth=45, stretch=True)
+        tree.pack(side="left", fill="both", expand=True)
+
+        # Add rows: first cell is item name, then inventory values per store
+        for idx, item_name in enumerate(item_names):
+            row_vals = [item_name]
+            for store in ALL_STORES:
                 inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
-                while len(inv) < len(item_names):
-                    inv.append("")
-                inv[idx] = val
-                foil = self.data.get(store, {}).get("foil", [""]*4)
-                self.data[store] = {"inventory": inv, "foil": foil}
-        self.save_data()
-        self.update_store_status_display()
-        self.update_imported_stores_display()
-        messagebox.showinfo("Saved", "All table edits have been saved.")
-        editor.lift()
-        self.status.config(text="All table edits saved.")
+                val = inv[idx] if idx < len(inv) else ""
+                row_vals.append(str(val))
+            tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
 
-    savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
-    savebtn.pack(side="bottom", pady=5)
+        # Cell editing logic
+        def on_double_click(event):
+            region = tree.identify("region", event.x, event.y)
+            if region != "cell":
+                return
+            rowid = tree.identify_row(event.y)
+            col = tree.identify_column(event.x)
+            col_index = int(col.replace("#", "")) - 1
+            if rowid == "" or col_index == 0:  # Do not edit item names
+                return
+            x, y, width, height = tree.bbox(rowid, col)
+            value = tree.set(rowid, columns[col_index])
+            entry = tk.Entry(tree, width=8)
+            entry.place(x=x, y=y, width=width, height=height)
+            entry.insert(0, value)
+            entry.focus()
 
-    # (rest of the methods unchanged, already present above)
+            def on_entry_confirm(event=None):
+                newval = entry.get()
+                tree.set(rowid, columns[col_index], newval)
+                entry.destroy()
+
+            entry.bind("<Return>", on_entry_confirm)
+            entry.bind("<FocusOut>", lambda e: entry.destroy())
+
+        tree.bind("<Double-1>", on_double_click)
+
+        # Save button
+        def save_table_edits():
+            for idx, rowid in enumerate(tree.get_children()):
+                values = tree.item(rowid)["values"]
+                # item_name = values[0]  # not needed for saving
+                for col_idx, store in enumerate(ALL_STORES, start=1):
+                    val = values[col_idx]
+                    inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
+                    while len(inv) < len(item_names):
+                        inv.append("")
+                    inv[idx] = val
+                    foil = self.data.get(store, {}).get("foil", [""]*4)
+                    self.data[store] = {"inventory": inv, "foil": foil}
+            self.save_data()
+            self.update_store_status_display()
+            self.update_imported_stores_display()
+            messagebox.showinfo("Saved", "All table edits have been saved.")
+            editor.lift()
+            self.status.config(text="All table edits saved.")
+
+        savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
+        savebtn.pack(side="bottom", pady=5)
 
 def main():
     root = tk.Tk()
