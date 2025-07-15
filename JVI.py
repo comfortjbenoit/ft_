@@ -15,7 +15,6 @@ DEFAULT_STORE_COL1 = ["001", "003", "004", "005", "007", "008", "010", "011", "0
 DEFAULT_STORE_COL2 = ["201", "202", "203", "204", "205", "206", "207", "208", "209", "211", "214", "215", "216", "217"]
 
 def colname2idx(name):
-    """Convert Excel column name (A, B, ... AA...) to 0-based index"""
     name = name.upper()
     idx = 0
     for c in name:
@@ -23,8 +22,6 @@ def colname2idx(name):
     return idx - 1
 
 class AreaDialog(simpledialog.Dialog):
-    """Dialog to set the cell/range import areas for templates and sheets."""
-
     def __init__(self, parent, title, fields, initial_values=None):
         self.fields = fields
         self.initial_values = initial_values or {}
@@ -53,12 +50,12 @@ class InventoryApp:
         self.data = {}
         self.config = {
             "download_path": "",
-            "export_path": "",
+            "inventory_export_path": "",
+            "foil_export_path": "",
             "inventory_template": "",
             "foil_template": "",
             "store_col1": DEFAULT_STORE_COL1,
             "store_col2": DEFAULT_STORE_COL2,
-            # Default area settings (can be changed via GUI)
             "template_areas": {
                 "date_cell": "C4",
                 "pack_range": "A8:A44",
@@ -82,7 +79,6 @@ class InventoryApp:
             try:
                 with open(CONFIG_FILE, 'r') as f:
                     self.config = json.load(f)
-                # Fallback for missing keys
                 if "store_col1" not in self.config:
                     self.config["store_col1"] = DEFAULT_STORE_COL1
                 if "store_col2" not in self.config:
@@ -100,10 +96,16 @@ class InventoryApp:
                         "inventory_range": "D8:D44",
                         "foil_range": "G8:G11"
                     }
+                if "inventory_export_path" not in self.config:
+                    self.config["inventory_export_path"] = ""
+                if "foil_export_path" not in self.config:
+                    self.config["foil_export_path"] = ""
             except Exception:
+                # fallback/defaults
                 self.config = {
                     "download_path": "",
-                    "export_path": "",
+                    "inventory_export_path": "",
+                    "foil_export_path": "",
                     "inventory_template": "",
                     "foil_template": "",
                     "store_col1": DEFAULT_STORE_COL1,
@@ -154,7 +156,6 @@ class InventoryApp:
         frame = ttk.Frame(self.root, padding=10)
         frame.pack(fill='both', expand=True)
 
-        # Menu for table editor and store management
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         store_menu = tk.Menu(menubar, tearoff=0)
@@ -168,7 +169,7 @@ class InventoryApp:
         area_menu.add_command(label="Set Template Import Areas", command=self.set_template_areas)
         area_menu.add_command(label="Set Store Sheet Import Areas", command=self.set_store_sheet_areas)
 
-        btn_template = ttk.Button(frame, text="Import Inventory Data Template", command=self.set_inventory_template_path)
+        btn_template = ttk.Button(frame, text="Set Inventory Data Template", command=self.set_inventory_template_path)
         btn_template.grid(row=0, column=0, padx=5, pady=5)
 
         btn_foil_template = ttk.Button(frame, text="Set Foil Pan Template", command=self.set_foil_template_path)
@@ -192,7 +193,6 @@ class InventoryApp:
         btn_import_json = ttk.Button(frame, text="Import Data (JSON)", command=self.import_json_data)
         btn_import_json.grid(row=1, column=3, padx=5, pady=5)
 
-        # Store upload status columns (centered text, green checkmark)
         store_status_frame = ttk.LabelFrame(frame, text="Store Upload Status")
         store_status_frame.grid(row=2, column=0, columnspan=4, pady=10, sticky="we")
         for col in range(2):
@@ -224,33 +224,39 @@ class InventoryApp:
         self.download_entry.insert(0, self.config.get("download_path", ""))
         ttk.Button(path_frame, text="Set", command=self.set_download_path).grid(row=0, column=2)
 
-        ttk.Label(path_frame, text="Export Folder:").grid(row=1, column=0, sticky='e')
-        self.export_entry = ttk.Entry(path_frame, width=50)
-        self.export_entry.grid(row=1, column=1, padx=5)
-        self.export_entry.insert(0, self.config.get("export_path", ""))
-        ttk.Button(path_frame, text="Set", command=self.set_export_path).grid(row=1, column=2)
+        ttk.Label(path_frame, text="Inventory Export Folder:").grid(row=1, column=0, sticky='e')
+        self.inventory_export_entry = ttk.Entry(path_frame, width=50)
+        self.inventory_export_entry.grid(row=1, column=1, padx=5)
+        self.inventory_export_entry.insert(0, self.config.get("inventory_export_path", ""))
+        ttk.Button(path_frame, text="Set", command=self.set_inventory_export_path).grid(row=1, column=2)
 
-        ttk.Label(path_frame, text="Inventory Template:").grid(row=2, column=0, sticky='e')
+        ttk.Label(path_frame, text="Foil Pan Export Folder:").grid(row=2, column=0, sticky='e')
+        self.foil_export_entry = ttk.Entry(path_frame, width=50)
+        self.foil_export_entry.grid(row=2, column=1, padx=5)
+        self.foil_export_entry.insert(0, self.config.get("foil_export_path", ""))
+        ttk.Button(path_frame, text="Set", command=self.set_foil_export_path).grid(row=2, column=2)
+
+        ttk.Label(path_frame, text="Inventory Template:").grid(row=3, column=0, sticky='e')
         self.inv_template_entry = ttk.Entry(path_frame, width=50)
-        self.inv_template_entry.grid(row=2, column=1, padx=5)
+        self.inv_template_entry.grid(row=3, column=1, padx=5)
         self.inv_template_entry.insert(0, self.config.get("inventory_template", ""))
-        ttk.Button(path_frame, text="Set", command=self.set_inventory_template_path).grid(row=2, column=2)
+        ttk.Button(path_frame, text="Set", command=self.set_inventory_template_path).grid(row=3, column=2)
 
-        ttk.Label(path_frame, text="Foil Pan Template:").grid(row=3, column=0, sticky='e')
+        ttk.Label(path_frame, text="Foil Pan Template:").grid(row=4, column=0, sticky='e')
         self.foil_template_entry = ttk.Entry(path_frame, width=50)
-        self.foil_template_entry.grid(row=3, column=1, padx=5)
+        self.foil_template_entry.grid(row=4, column=1, padx=5)
         self.foil_template_entry.insert(0, self.config.get("foil_template", ""))
-        ttk.Button(path_frame, text="Set", command=self.set_foil_template_path).grid(row=3, column=2)
+        ttk.Button(path_frame, text="Set", command=self.set_foil_template_path).grid(row=4, column=2)
 
         imported_frame = ttk.LabelFrame(frame, text="Imported Stores (all)")
-        imported_frame.grid(row=4, column=0, columnspan=4, pady=10, sticky="we")
+        imported_frame.grid(row=5, column=0, columnspan=4, pady=10, sticky="we")
         self.imported_stores_var = tk.StringVar()
         self.imported_stores_label = ttk.Label(imported_frame, textvariable=self.imported_stores_var, anchor="w", justify="left")
         self.imported_stores_label.pack(fill='both', expand=True)
         self.update_imported_stores_display()
 
         self.status = ttk.Label(frame, text="Status: Ready")
-        self.status.grid(row=5, column=0, columnspan=4, pady=10)
+        self.status.grid(row=6, column=0, columnspan=4, pady=10)
 
     def update_store_status_display(self):
         check, cross = "\u2714", "\u2716"
@@ -290,12 +296,20 @@ class InventoryApp:
             self.download_entry.insert(0, path)
             self.save_config()
 
-    def set_export_path(self):
+    def set_inventory_export_path(self):
         path = filedialog.askdirectory()
         if path:
-            self.config["export_path"] = path
-            self.export_entry.delete(0, tk.END)
-            self.export_entry.insert(0, path)
+            self.config["inventory_export_path"] = path
+            self.inventory_export_entry.delete(0, tk.END)
+            self.inventory_export_entry.insert(0, path)
+            self.save_config()
+
+    def set_foil_export_path(self):
+        path = filedialog.askdirectory()
+        if path:
+            self.config["foil_export_path"] = path
+            self.foil_export_entry.delete(0, tk.END)
+            self.foil_export_entry.insert(0, path)
             self.save_config()
 
     def set_inventory_template_path(self):
@@ -315,7 +329,6 @@ class InventoryApp:
             self.save_config()
 
     def parse_cell(self, ref):
-        # Returns (row_idx, col_idx), e.g. "C4"->(3,2)
         ref = ref.strip().upper()
         for i, c in enumerate(ref):
             if c.isdigit():
@@ -325,7 +338,6 @@ class InventoryApp:
         return int(row)-1, colname2idx(col)
 
     def parse_range(self, ref):
-        # Returns (row1, col1, row2, col2) for e.g. "A8:C44"
         if ":" in ref:
             a, b = ref.split(":")
             r1, c1 = self.parse_cell(a)
@@ -381,7 +393,6 @@ class InventoryApp:
             items = []
             item_names = []
             for i in range(n_items):
-                # Defensive: only if cell exists
                 try: pack = str(sheet.cell_value(pack_r1+i, pack_c1)).strip()
                 except Exception: pack = ""
                 try: size = str(sheet.cell_value(size_r1+i, size_c1)).strip()
@@ -405,14 +416,12 @@ class InventoryApp:
             if ext == ".xls":
                 book = xlrd.open_workbook(path)
                 sheet = book.sheet_by_index(0)
-                # Store cell
                 store_row, store_col = self.parse_cell(areas.get("store_cell", "G3"))
                 store_cell = sheet.cell_value(store_row, store_col)
                 if isinstance(store_cell, float):
                     store = f"{int(store_cell):03}"
                 else:
                     store = str(store_cell).zfill(3)
-                # Inventory range
                 ir1, ic1, ir2, ic2 = self.parse_range(areas.get("inventory_range", "D8:D44"))
                 inventory = []
                 for i in range(ir2-ir1+1):
@@ -420,7 +429,6 @@ class InventoryApp:
                         inventory.append(sheet.cell_value(ir1+i, ic1))
                     except Exception:
                         inventory.append("")
-                # Foil range
                 fr1, fc1, fr2, fc2 = self.parse_range(areas.get("foil_range", "G8:G11"))
                 foil = []
                 for i in range(fr2-fr1+1):
@@ -493,8 +501,10 @@ class InventoryApp:
 
                 self.download_entry.delete(0, tk.END)
                 self.download_entry.insert(0, self.config.get("download_path", ""))
-                self.export_entry.delete(0, tk.END)
-                self.export_entry.insert(0, self.config.get("export_path", ""))
+                self.inventory_export_entry.delete(0, tk.END)
+                self.inventory_export_entry.insert(0, self.config.get("inventory_export_path", ""))
+                self.foil_export_entry.delete(0, tk.END)
+                self.foil_export_entry.insert(0, self.config.get("foil_export_path", ""))
                 self.inv_template_entry.delete(0, tk.END)
                 self.inv_template_entry.insert(0, self.config.get("inventory_template", ""))
                 self.foil_template_entry.delete(0, tk.END)
@@ -511,12 +521,12 @@ class InventoryApp:
 
     def export_inventory_to_template(self):
         template_path = self.config.get("inventory_template", "")
-        export_folder = self.config.get("export_path", "")
+        export_folder = self.config.get("inventory_export_path", "")
         if not template_path or not os.path.exists(template_path):
             messagebox.showerror("Error", "No inventory template set or file does not exist.")
             return
         if not export_folder or not os.path.exists(export_folder):
-            messagebox.showerror("Error", "No export folder set or folder does not exist.")
+            messagebox.showerror("Error", "No inventory export folder set or folder does not exist.")
             return
 
         stores = self.get_all_stores()
@@ -536,7 +546,7 @@ class InventoryApp:
         for i, item_display in enumerate(item_names):
             ws.write(4 + i, 0, item_display)
 
-        # Write inventory data for each store in corresponding columns (B5:B34 for first store, etc.)
+        # Write inventory data for each store in corresponding columns (B5:B34 for first store, ...)
         for store_idx, store in enumerate(stores):
             col = 1 + store_idx
             inv = self.data.get(store, {}).get("inventory", [""] * len(item_names))
@@ -549,12 +559,12 @@ class InventoryApp:
 
     def export_foil_to_template(self):
         template_path = self.config.get("foil_template", "")
-        export_folder = self.config.get("export_path", "")
+        export_folder = self.config.get("foil_export_path", "")
         if not template_path or not os.path.exists(template_path):
             messagebox.showerror("Error", "No foil pan template set or file does not exist.")
             return
         if not export_folder or not os.path.exists(export_folder):
-            messagebox.showerror("Error", "No export folder set or folder does not exist.")
+            messagebox.showerror("Error", "No foil pan export folder set or folder does not exist.")
             return
 
         stores = self.get_all_stores()
@@ -600,6 +610,11 @@ class InventoryApp:
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
+        # Style for smaller font
+        style = ttk.Style(editor)
+        style.configure("Treeview", font=("Arial", 9), rowheight=18)
+        style.configure("Treeview.Heading", font=("Arial", 9, "bold"))
+
         xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
         xscroll.pack(side="bottom", fill="x")
         yscroll = tk.Scrollbar(editor_frame, orient="vertical")
@@ -612,7 +627,8 @@ class InventoryApp:
             show="headings",
             height=min(len(item_names), 25),
             xscrollcommand=xscroll.set,
-            yscrollcommand=yscroll.set
+            yscrollcommand=yscroll.set,
+            style="Treeview"
         )
         xscroll.config(command=tree.xview)
         yscroll.config(command=tree.yview)
@@ -644,7 +660,7 @@ class InventoryApp:
                 return
             x, y, width, height = tree.bbox(rowid, col)
             value = tree.set(rowid, columns[col_index])
-            entry = tk.Entry(tree, width=8)
+            entry = tk.Entry(tree, width=8, font=("Arial", 9))
             entry.place(x=x, y=y, width=width, height=height)
             entry.insert(0, value)
             entry.focus()
@@ -698,9 +714,9 @@ class InventoryApp:
         ttk.Label(frame, text="Store Column 1").grid(row=0, column=0, padx=5)
         ttk.Label(frame, text="Store Column 2").grid(row=0, column=2, padx=5)
 
-        col1_list = tk.Listbox(frame, selectmode=tk.SINGLE)
+        col1_list = tk.Listbox(frame, selectmode=tk.SINGLE, font=("Arial", 9))
         col1_list.grid(row=1, column=0, padx=5)
-        col2_list = tk.Listbox(frame, selectmode=tk.SINGLE)
+        col2_list = tk.Listbox(frame, selectmode=tk.SINGLE, font=("Arial", 9))
         col2_list.grid(row=1, column=2, padx=5)
 
         refresh_lists()
