@@ -9,10 +9,8 @@ from datetime import datetime
 CONFIG_FILE = "config.json"
 DATA_FILE = "data.json"
 
-STORE_CODES = [
-    "001", "003", "004", "005", "007", "008", "010", "011", "012", "014", "015", "017", "018", "019",
-    "201", "202", "203", "204", "205", "206", "207", "208", "209", "211", "214", "215", "216", "217"
-]
+STORE_COL1 = ["001", "003", "004", "005", "007", "008", "010", "011", "012", "014", "015", "017", "018", "019"]
+STORE_COL2 = ["201", "202", "203", "204", "205", "206", "207", "208", "209", "211", "214", "215", "216", "217"]
 
 class InventoryApp:
     def __init__(self, root):
@@ -72,14 +70,23 @@ class InventoryApp:
         btn_import_json = ttk.Button(frame, text="Import Data (JSON)", command=self.import_json_data)
         btn_import_json.grid(row=1, column=1, padx=5, pady=5)
 
-        self.check_vars = {}
-        check_frame = ttk.LabelFrame(frame, text="Stores")
-        check_frame.grid(row=2, column=0, columnspan=4, pady=10)
-        for idx, code in enumerate(STORE_CODES):
-            var = tk.BooleanVar(value=code in self.data)
-            cb = ttk.Checkbutton(check_frame, text=code, variable=var)
-            cb.grid(row=idx//7, column=idx%7, sticky='w')
-            self.check_vars[code] = var
+        # Store upload status columns
+        store_status_frame = ttk.LabelFrame(frame, text="Store Upload Status")
+        store_status_frame.grid(row=2, column=0, columnspan=4, pady=10, sticky="we")
+        self.store_labels_col1 = []
+        self.store_labels_col2 = []
+
+        for row, store in enumerate(STORE_COL1):
+            lbl = ttk.Label(store_status_frame, text="", anchor='w', width=8)
+            lbl.grid(row=row, column=0, sticky="w")
+            self.store_labels_col1.append(lbl)
+
+        for row, store in enumerate(STORE_COL2):
+            lbl = ttk.Label(store_status_frame, text="", anchor='w', width=8)
+            lbl.grid(row=row, column=1, sticky="w")
+            self.store_labels_col2.append(lbl)
+
+        self.update_store_status_display()
 
         path_frame = ttk.LabelFrame(frame, text="Folders")
         path_frame.grid(row=3, column=0, columnspan=4, pady=10, sticky='we')
@@ -96,8 +103,7 @@ class InventoryApp:
         self.export_entry.insert(0, self.config.get("export_path", ""))
         ttk.Button(path_frame, text="Set", command=self.set_export_path).grid(row=1, column=2)
 
-        # Imported Stores section
-        imported_frame = ttk.LabelFrame(frame, text="Imported Stores")
+        imported_frame = ttk.LabelFrame(frame, text="Imported Stores (all)")
         imported_frame.grid(row=4, column=0, columnspan=4, pady=10, sticky="we")
         self.imported_stores_var = tk.StringVar()
         self.imported_stores_label = ttk.Label(imported_frame, textvariable=self.imported_stores_var, anchor="w", justify="left")
@@ -107,10 +113,20 @@ class InventoryApp:
         self.status = ttk.Label(frame, text="Status: Ready")
         self.status.grid(row=5, column=0, columnspan=4, pady=10)
 
+    def update_store_status_display(self):
+        check, cross = "\u2714", "\u2716"
+        for i, store in enumerate(STORE_COL1):
+            uploaded = store in self.data
+            symbol = check if uploaded else cross
+            self.store_labels_col1[i]['text'] = f"{int(store):3} {symbol}"
+        for i, store in enumerate(STORE_COL2):
+            uploaded = store in self.data
+            symbol = check if uploaded else cross
+            self.store_labels_col2[i]['text'] = f"{int(store):3} {symbol}"
+
     def update_imported_stores_display(self):
-        """Display imported store numbers in the GUI."""
         if self.data:
-            stores = sorted(self.data.keys())
+            stores = sorted(self.data.keys(), key=lambda x: (len(x), x))
             self.imported_stores_var.set(", ".join(stores))
         else:
             self.imported_stores_var.set("None")
@@ -151,22 +167,18 @@ class InventoryApp:
         if ext == ".xls":
             book = xlrd.open_workbook(path)
             sheet = book.sheet_by_index(0)
-            # Defensive: check for enough rows and columns
             if sheet.nrows < 37 or sheet.ncols < 7:
                 raise ValueError(f"Sheet too small: found {sheet.nrows} rows and {sheet.ncols} columns.")
-
             try:
                 store = str(sheet.cell_value(2, 6)).zfill(3)  # G3 is (2,6)
             except IndexError:
                 raise ValueError("Store code cell G3 (row 3, col 7) is missing in the sheet.")
-
             inventory = []
             for i in range(7, 37):
                 try:
                     inventory.append(sheet.cell_value(i, 3))
                 except IndexError:
                     inventory.append("")
-
             foil = []
             for i in range(7, 11):
                 try:
@@ -197,6 +209,7 @@ class InventoryApp:
 
         if imported_stores:
             self.save_data()
+            self.update_store_status_display()
             self.update_imported_stores_display()
             self.status.config(text=f"Imported stores: {', '.join(imported_stores)}")
 
@@ -206,7 +219,6 @@ class InventoryApp:
             messagebox.showerror("Error", "Export folder does not exist.")
             return
 
-        # Export master inventory as .xls
         wb_inv = xlwt.Workbook()
         ws_inv = wb_inv.add_sheet('Inventory')
         ws_inv.write(0, 0, "Store")
@@ -219,7 +231,6 @@ class InventoryApp:
         inv_file = os.path.join(export_path, "master_inventory.xls")
         wb_inv.save(inv_file)
 
-        # Export foil pan orders as .xls
         wb_foil = xlwt.Workbook()
         ws_foil = wb_foil.add_sheet('Foil')
         ws_foil.write(0, 0, "Store")
@@ -235,7 +246,6 @@ class InventoryApp:
         self.status.config(text=f"Export complete: {len(self.data)} stores. Files saved to {export_path}")
 
     def export_foil_pan_order(self):
-        # Use template file if imported, or ask user to select a .xls template
         template_path = self.template.get("template_path")
         if not template_path or not os.path.exists(template_path):
             template_path = filedialog.askopenfilename(
@@ -290,9 +300,6 @@ class InventoryApp:
                 self.config = imported.get("config", {"download_path": "", "export_path": ""})
                 self.template = imported.get("template", {})
 
-                for code, var in self.check_vars.items():
-                    var.set(code in self.data)
-
                 self.download_entry.delete(0, tk.END)
                 self.download_entry.insert(0, self.config.get("download_path", ""))
                 self.export_entry.delete(0, tk.END)
@@ -300,6 +307,7 @@ class InventoryApp:
 
                 self.save_data()
                 self.save_config()
+                self.update_store_status_display()
                 self.update_imported_stores_display()
 
                 self.status.config(text=f"Data imported from {os.path.basename(import_path)}")
