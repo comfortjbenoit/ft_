@@ -1,4 +1,4 @@
-name: Build EXE
+name: Build Apps
 
 on:
   push:
@@ -6,7 +6,8 @@ on:
       - '**.py'
 
 jobs:
-  build:
+  build-windows:
+    name: Build Windows EXE
     runs-on: windows-latest
 
     steps:
@@ -23,11 +24,38 @@ jobs:
           pip install pyinstaller
           pip install xlrd xlwt xlutils pandas openpyxl
 
-      - name: Build EXE
+      - name: Build Windows EXE
         run: pyinstaller --onefile --noconfirm --windowed JVI.py
 
-      - name: Upload artifact
+      - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
           name: Windows-EXE
           path: dist/JVI.exe
+
+  build-macos:
+    name: Build macOS App
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install xlrd xlwt xlutils pandas openpyxl
+
+      - name: Build macOS App
+        run: pyinstaller --noconfirm --windowed JVI.py
+
+      - name: Upload macOS App
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-App
+          path: dist/JVI
