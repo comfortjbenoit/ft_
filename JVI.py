@@ -50,7 +50,6 @@ class InventoryApp:
             json.dump(self.data, f, indent=2)
 
     def fix_data_store_keys(self):
-        """Make sure store keys are always zero-padded strings."""
         new_data = {}
         for k, v in self.data.items():
             try:
@@ -143,7 +142,7 @@ class InventoryApp:
             uploaded = store in self.data
             if uploaded:
                 self.store_labels_col1[i]['text'] = f"{int(store):3} {check}"
-                self.store_labels_col1[i]['fg'] = "#1ca41c"  # green
+                self.store_labels_col1[i]['fg'] = "#1ca41c"
             else:
                 self.store_labels_col1[i]['text'] = f"{int(store):3} {cross}"
                 self.store_labels_col1[i]['fg'] = "black"
@@ -151,7 +150,7 @@ class InventoryApp:
             uploaded = store in self.data
             if uploaded:
                 self.store_labels_col2[i]['text'] = f"{int(store):3} {check}"
-                self.store_labels_col2[i]['fg'] = "#1ca41c"  # green
+                self.store_labels_col2[i]['fg'] = "#1ca41c"
             else:
                 self.store_labels_col2[i]['text'] = f"{int(store):3} {cross}"
                 self.store_labels_col2[i]['fg'] = "black"
@@ -185,17 +184,24 @@ class InventoryApp:
             try:
                 book = xlrd.open_workbook(path)
                 sheet = book.sheet_by_index(0)
-                self.template["date"] = sheet.cell_value(3, 2)  # C4 is (3,2)
+                # C4 = date
+                self.template["date"] = str(sheet.cell_value(3, 2)).strip() if sheet.nrows > 3 and sheet.ncols > 2 else ""
                 items = []
                 item_names = []
-                # Rows 8-44 are 1-based; xlrd is 0-based => rows 7 to 43 inclusive
-                for r in range(7, 44):
-                    case_qty = str(sheet.cell_value(r, 0)).strip()
-                    size = str(sheet.cell_value(r, 1)).strip()
-                    desc = str(sheet.cell_value(r, 2)).strip()
+                # a8:a44 = pack (col 0), b8:b44 = size (col 1), c8:c44 = desc (col 2)
+                for r in range(7, 44):  # 8-44 in Excel is 7-43 in xlrd
+                    # Defensive: Only process if row has at least 3 columns
+                    row_vals = []
+                    for c in range(3):
+                        try:
+                            val = sheet.cell_value(r, c)
+                        except IndexError:
+                            val = ""
+                        row_vals.append(str(val).strip())
+                    case_qty, size, desc = row_vals
                     items.append({'case_qty': case_qty, 'size': size, 'description': desc})
-                    # For display, concatenate as requested
-                    item_names.append(f"{desc}, {size}, {case_qty}")
+                    display_name = f"{desc}, {size}, {case_qty}".strip(", ")
+                    item_names.append(display_name)
                 self.template["items"] = items
                 self.template["item_names"] = item_names
                 self.template["template_path"] = path
@@ -218,7 +224,7 @@ class InventoryApp:
                     store = str(store_cell).zfill(3)
             except IndexError:
                 raise ValueError("Store code cell G3 (row 3, col 7) is missing in the sheet.")
-            # Inventory data from D8:D44 (col 3, rows 7..43)
+            # D8:D44 = col 3, rows 7-43
             inventory = []
             for i in range(7, 44):
                 try:
@@ -270,7 +276,8 @@ class InventoryApp:
         wb_inv = xlwt.Workbook()
         ws_inv = wb_inv.add_sheet('Inventory')
         ws_inv.write(0, 0, "Store")
-        for i in range(37):  # Up to 37 items (rows 8-44)
+        n_items = len(self.template.get("item_names", []))
+        for i in range(n_items):
             ws_inv.write(0, i+1, f"Item {i+1}")
         for row_idx, (store, info) in enumerate(self.data.items(), start=1):
             ws_inv.write(row_idx, 0, store)
@@ -364,7 +371,6 @@ class InventoryApp:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
     def open_table_editor(self):
-        # Table-based editor: first column is item name, then store columns
         if "item_names" not in self.template or not self.template["item_names"]:
             messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
             return
@@ -381,13 +387,11 @@ class InventoryApp:
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
-        # Scrollbars
         xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
         xscroll.pack(side="bottom", fill="x")
         yscroll = tk.Scrollbar(editor_frame, orient="vertical")
         yscroll.pack(side="right", fill="y")
 
-        # Table: first column is "Item", then store columns
         columns = ["Item"] + ALL_STORES
         tree = ttk.Treeview(
             editor_frame,
@@ -403,12 +407,11 @@ class InventoryApp:
         for col in columns:
             tree.heading(col, text=col)
             if col == "Item":
-                tree.column(col, width=260, anchor='w', minwidth=130, stretch=False)
+                tree.column(col, width=320, anchor='w', minwidth=150, stretch=False)
             else:
                 tree.column(col, width=60, anchor='center', minwidth=45, stretch=True)
         tree.pack(side="left", fill="both", expand=True)
 
-        # Add rows: first cell is item name, then inventory values per store
         for idx, item_name in enumerate(item_names):
             row_vals = [item_name]
             for store in ALL_STORES:
@@ -417,7 +420,6 @@ class InventoryApp:
                 row_vals.append(str(val))
             tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
 
-        # Cell editing logic
         def on_double_click(event):
             region = tree.identify("region", event.x, event.y)
             if region != "cell":
@@ -425,7 +427,7 @@ class InventoryApp:
             rowid = tree.identify_row(event.y)
             col = tree.identify_column(event.x)
             col_index = int(col.replace("#", "")) - 1
-            if rowid == "" or col_index == 0:  # Do not edit item names
+            if rowid == "" or col_index == 0:
                 return
             x, y, width, height = tree.bbox(rowid, col)
             value = tree.set(rowid, columns[col_index])
@@ -444,7 +446,6 @@ class InventoryApp:
 
         tree.bind("<Double-1>", on_double_click)
 
-        # Save button
         def save_table_edits():
             for idx, rowid in enumerate(tree.get_children()):
                 values = tree.item(rowid)["values"]
