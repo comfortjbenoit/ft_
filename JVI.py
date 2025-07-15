@@ -6,8 +6,6 @@ import xlrd
 import xlwt
 from datetime import datetime
 
-##
-
 CONFIG_FILE = "config.json"
 DATA_FILE = "data.json"
 
@@ -23,6 +21,7 @@ class InventoryApp:
         self.data = {}
         self.config = {"download_path": "", "export_path": ""}
         self.template = {}
+
         self.load_config()
         self.load_data()
         self.build_gui()
@@ -97,8 +96,24 @@ class InventoryApp:
         self.export_entry.insert(0, self.config.get("export_path", ""))
         ttk.Button(path_frame, text="Set", command=self.set_export_path).grid(row=1, column=2)
 
+        # Imported Stores section
+        imported_frame = ttk.LabelFrame(frame, text="Imported Stores")
+        imported_frame.grid(row=4, column=0, columnspan=4, pady=10, sticky="we")
+        self.imported_stores_var = tk.StringVar()
+        self.imported_stores_label = ttk.Label(imported_frame, textvariable=self.imported_stores_var, anchor="w", justify="left")
+        self.imported_stores_label.pack(fill='both', expand=True)
+        self.update_imported_stores_display()
+
         self.status = ttk.Label(frame, text="Status: Ready")
-        self.status.grid(row=4, column=0, columnspan=4, pady=10)
+        self.status.grid(row=5, column=0, columnspan=4, pady=10)
+
+    def update_imported_stores_display(self):
+        """Display imported store numbers in the GUI."""
+        if self.data:
+            stores = sorted(self.data.keys())
+            self.imported_stores_var.set(", ".join(stores))
+        else:
+            self.imported_stores_var.set("None")
 
     def set_download_path(self):
         path = filedialog.askdirectory()
@@ -136,28 +151,54 @@ class InventoryApp:
         if ext == ".xls":
             book = xlrd.open_workbook(path)
             sheet = book.sheet_by_index(0)
-            store = str(sheet.cell_value(2, 6)).zfill(3)  # G3 is (2,6)
-            inventory = [sheet.cell_value(i, 3) for i in range(7, 37)]  # D8:D37
-            foil = [sheet.cell_value(i, 6) for i in range(7, 11)]  # G8:G11
+            # Defensive: check for enough rows and columns
+            if sheet.nrows < 37 or sheet.ncols < 7:
+                raise ValueError(f"Sheet too small: found {sheet.nrows} rows and {sheet.ncols} columns.")
+
+            try:
+                store = str(sheet.cell_value(2, 6)).zfill(3)  # G3 is (2,6)
+            except IndexError:
+                raise ValueError("Store code cell G3 (row 3, col 7) is missing in the sheet.")
+
+            inventory = []
+            for i in range(7, 37):
+                try:
+                    inventory.append(sheet.cell_value(i, 3))
+                except IndexError:
+                    inventory.append("")
+
+            foil = []
+            for i in range(7, 11):
+                try:
+                    foil.append(sheet.cell_value(i, 6))
+                except IndexError:
+                    foil.append("")
         else:
             raise ValueError("Unsupported file format. Only .xls files are supported.")
         return store, inventory, foil
 
     def import_store_sheet(self):
-        path = filedialog.askopenfilename(
+        paths = filedialog.askopenfilenames(
             initialdir=self.config.get("download_path", ""),
-            filetypes=[("Excel 97-2003", "*.xls")]
+            filetypes=[("Excel 97-2003", "*.xls")],
+            title="Select Store Sheet(s) to Import"
         )
-        if path:
+        if not paths:
+            return
+
+        imported_stores = []
+        for path in paths:
             try:
                 store, inventory, foil = self.load_excel_file(path)
                 self.data[store] = {"inventory": inventory, "foil": foil}
-                if store in self.check_vars:
-                    self.check_vars[store].set(True)
-                self.save_data()
-                self.status.config(text=f"Imported store {store} from {os.path.basename(path)}")
+                imported_stores.append(store)
             except Exception as e:
-                messagebox.showerror("Import Error", f"Failed to read file: {e}")
+                messagebox.showerror("Import Error", f"Failed to read file '{os.path.basename(path)}': {e}")
+
+        if imported_stores:
+            self.save_data()
+            self.update_imported_stores_display()
+            self.status.config(text=f"Imported stores: {', '.join(imported_stores)}")
 
     def export_files(self):
         export_path = self.config.get("export_path", ".")
@@ -213,7 +254,6 @@ class InventoryApp:
         export_date = self.template.get("date", datetime.today().strftime("%m-%d-%Y"))
         output_file = f"Foil Pan Order {export_date}.xls"
         try:
-            # Copy the template file as the output
             import shutil
             shutil.copy(template_path, os.path.join(export_folder, output_file))
             self.status.config(text=f"Foil Pan Order exported: {output_file}")
@@ -260,6 +300,7 @@ class InventoryApp:
 
                 self.save_data()
                 self.save_config()
+                self.update_imported_stores_display()
 
                 self.status.config(text=f"Data imported from {os.path.basename(import_path)}")
             except Exception as e:
