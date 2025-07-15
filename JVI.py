@@ -354,140 +354,108 @@ class InventoryApp:
             except Exception as e:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
-    def open_table_editor(self):
-        # Table-based editor: columns=store numbers, rows=item names from template
-        if "item_names" not in self.template or not self.template["item_names"]:
-            messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
+def open_table_editor(self):
+    # Table-based editor: columns=store numbers, first column=item names from template
+    if "item_names" not in self.template or not self.template["item_names"]:
+        messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
+        return
+
+    item_names = self.template["item_names"]
+    if not item_names:
+        messagebox.showerror("No Item Names", "No item names found in template.")
+        return
+
+    editor = tk.Toplevel(self.root)
+    editor.title("Inventory Data Table Editor")
+    editor.geometry("1200x700")
+    editor_frame = ttk.Frame(editor, padding=10)
+    editor_frame.pack(fill='both', expand=True)
+
+    # Scrollbars
+    xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
+    xscroll.pack(side="bottom", fill="x")
+    yscroll = tk.Scrollbar(editor_frame, orient="vertical")
+    yscroll.pack(side="right", fill="y")
+
+    # Table: first column is "Item", then store columns
+    columns = ["Item"] + ALL_STORES
+    tree = ttk.Treeview(
+        editor_frame,
+        columns=columns,
+        show="headings",
+        height=min(len(item_names), 25),
+        xscrollcommand=xscroll.set,
+        yscrollcommand=yscroll.set
+    )
+    xscroll.config(command=tree.xview)
+    yscroll.config(command=tree.yview)
+
+    for col in columns:
+        tree.heading(col, text=col)
+        if col == "Item":
+            tree.column(col, width=180, anchor='w', minwidth=120, stretch=False)
+        else:
+            tree.column(col, width=60, anchor='center', minwidth=45, stretch=True)
+    tree.pack(side="left", fill="both", expand=True)
+
+    # Add rows: first cell is item name, then inventory values per store
+    for idx, item_name in enumerate(item_names):
+        row_vals = [item_name]
+        for store in ALL_STORES:
+            inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
+            val = inv[idx] if idx < len(inv) else ""
+            row_vals.append(str(val))
+        tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
+
+    # Cell editing logic
+    def on_double_click(event):
+        region = tree.identify("region", event.x, event.y)
+        if region != "cell":
             return
-
-        item_names = self.template["item_names"]
-        if not item_names:
-            messagebox.showerror("No Item Names", "No item names found in template.")
+        rowid = tree.identify_row(event.y)
+        col = tree.identify_column(event.x)
+        col_index = int(col.replace("#", "")) - 1
+        if rowid == "" or col_index == 0:  # Do not edit item names
             return
+        x, y, width, height = tree.bbox(rowid, col)
+        value = tree.set(rowid, columns[col_index])
+        entry = tk.Entry(tree, width=8)
+        entry.place(x=x, y=y, width=width, height=height)
+        entry.insert(0, value)
+        entry.focus()
 
-        editor = tk.Toplevel(self.root)
-        editor.title("Inventory Data Table Editor")
-        editor.geometry("1200x700")
-        editor_frame = ttk.Frame(editor, padding=10)
-        editor_frame.pack(fill='both', expand=True)
+        def on_entry_confirm(event=None):
+            newval = entry.get()
+            tree.set(rowid, columns[col_index], newval)
+            entry.destroy()
 
-        # Scrollbars
-        xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
-        xscroll.pack(side="bottom", fill="x")
-        yscroll = tk.Scrollbar(editor_frame, orient="vertical")
-        yscroll.pack(side="right", fill="y")
+        entry.bind("<Return>", on_entry_confirm)
+        entry.bind("<FocusOut>", lambda e: entry.destroy())
 
-        # Table: columns = stores, rows = items
-        columns = ALL_STORES
-        tree = ttk.Treeview(
-            editor_frame,
-            columns=columns,
-            show="headings",
-            height=min(len(item_names), 25),
-            xscrollcommand=xscroll.set,
-            yscrollcommand=yscroll.set
-        )
-        xscroll.config(command=tree.xview)
-        yscroll.config(command=tree.yview)
+    tree.bind("<Double-1>", on_double_click)
 
-        # Add row name column using "#0"
-        tree["displaycolumns"] = columns  # Show only columns, not the #0 column
-
-        for store in columns:
-            tree.heading(store, text=store)
-            tree.column(store, width=60, anchor='center', minwidth=45, stretch=True)
-
-        # Add rows with item names as first column (using tree.item 'text')
-        for idx, item_name in enumerate(item_names):
-            values = []
-            for store in columns:
+    # Save button
+    def save_table_edits():
+        for idx, rowid in enumerate(tree.get_children()):
+            values = tree.item(rowid)["values"]
+            item_name = values[0]
+            for col_idx, store in enumerate(ALL_STORES, start=1):
+                val = values[col_idx]
                 inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
-                val = inv[idx] if idx < len(inv) else ""
-                values.append(str(val))
-            tree.insert("", "end", text=item_name, values=values, tags=(f"row_{idx}",))
+                while len(inv) < len(item_names):
+                    inv.append("")
+                inv[idx] = val
+                foil = self.data.get(store, {}).get("foil", [""]*4)
+                self.data[store] = {"inventory": inv, "foil": foil}
+        self.save_data()
+        self.update_store_status_display()
+        self.update_imported_stores_display()
+        messagebox.showinfo("Saved", "All table edits have been saved.")
+        editor.lift()
+        self.status.config(text="All table edits saved.")
 
-        # Add a special "row name" column to the left
-        tree["show"] = "headings"
-        # Add the item names as a separate label column
-        label_col_width = max(100, max(len(str(n)) for n in item_names) * 8)
-        label_frame = ttk.Frame(editor_frame)
-        label_frame.place(x=0, y=0, relheight=1)
-        label_canvas = tk.Canvas(label_frame, width=label_col_width, height=25*min(len(item_names), 25))
-        label_canvas.pack(side="left", fill="y")
-        label_scroll = tk.Scrollbar(label_frame, orient="vertical", command=label_canvas.yview)
-        label_scroll.pack(side="left", fill="y")
-        label_canvas.configure(yscrollcommand=label_scroll.set)
-        label_frame.pack_propagate(False)
-
-        # Draw labels for each row
-        row_labels = []
-        for idx, item_name in enumerate(item_names):
-            lbl = tk.Label(label_canvas, text=item_name, anchor="w", width=int(label_col_width/8), font=("Arial", 11))
-            label_canvas.create_window(0, idx*24, anchor="nw", window=lbl, width=label_col_width, height=24)
-            row_labels.append(lbl)
-
-        def sync_scroll(*args):
-            tree.yview(*args)
-            label_canvas.yview(*args)
-        def tree_yview(*args):
-            label_canvas.yview(*args)
-            yscroll.set(*args)
-
-        tree.configure(yscrollcommand=tree_yview)
-        label_canvas.configure(yscrollcommand=yscroll.set, scrollregion=(0,0,label_col_width,24*len(item_names)))
-        tree.pack(side="left", fill="both", expand=True)
-
-        # Cell editing logic
-        def on_double_click(event):
-            region = tree.identify("region", event.x, event.y)
-            if region != "cell":
-                return
-            rowid = tree.identify_row(event.y)
-            col = tree.identify_column(event.x)
-            col_index = int(col.replace("#", "")) - 1
-            if rowid == "" or col_index < 0:
-                return
-            x, y, width, height = tree.bbox(rowid, col)
-            value = tree.set(rowid, columns[col_index])
-            entry = tk.Entry(tree, width=8)
-            entry.place(x=x, y=y, width=width, height=height)
-            entry.insert(0, value)
-            entry.focus()
-
-            def on_entry_confirm(event=None):
-                newval = entry.get()
-                tree.set(rowid, columns[col_index], newval)
-                entry.destroy()
-
-            entry.bind("<Return>", on_entry_confirm)
-            entry.bind("<FocusOut>", lambda e: entry.destroy())
-
-        tree.bind("<Double-1>", on_double_click)
-
-        # Save button
-        def save_table_edits():
-            for idx, rowid in enumerate(tree.get_children()):
-                item_name = item_names[idx]
-                values = tree.item(rowid)["values"]
-                for col_idx, val in enumerate(values):
-                    store = columns[col_idx]
-                    # Ensure store key is present in self.data
-                    inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
-                    while len(inv) < len(item_names):
-                        inv.append("")
-                    inv[idx] = val
-                    # Also preserve foil data
-                    foil = self.data.get(store, {}).get("foil", [""]*4)
-                    self.data[store] = {"inventory": inv, "foil": foil}
-            self.save_data()
-            self.update_store_status_display()
-            self.update_imported_stores_display()
-            messagebox.showinfo("Saved", "All table edits have been saved.")
-            editor.lift()
-            self.status.config(text="All table edits saved.")
-
-        savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
-        savebtn.pack(side="bottom", pady=5)
+    savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
+    savebtn.pack(side="bottom", pady=5)
 
     # (rest of the methods unchanged, already present above)
 
