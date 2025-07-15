@@ -48,6 +48,17 @@ class InventoryApp:
         with open(DATA_FILE, 'w') as f:
             json.dump(self.data, f, indent=2)
 
+    def fix_data_store_keys(self):
+        """Make sure store keys are always zero-padded strings."""
+        new_data = {}
+        for k, v in self.data.items():
+            try:
+                newk = f"{int(float(k)):03}"
+            except:
+                newk = str(k).zfill(3)
+            new_data[newk] = v
+        self.data = new_data
+
     def build_gui(self):
         frame = ttk.Frame(self.root, padding=10)
         frame.pack(fill='both', expand=True)
@@ -70,20 +81,25 @@ class InventoryApp:
         btn_import_json = ttk.Button(frame, text="Import Data (JSON)", command=self.import_json_data)
         btn_import_json.grid(row=1, column=1, padx=5, pady=5)
 
-        # Store upload status columns
+        # Store upload status columns (centered text)
         store_status_frame = ttk.LabelFrame(frame, text="Store Upload Status")
         store_status_frame.grid(row=2, column=0, columnspan=4, pady=10, sticky="we")
+        for col in range(2):
+            store_status_frame.grid_columnconfigure(col, weight=1)
+
         self.store_labels_col1 = []
         self.store_labels_col2 = []
 
+        label_font = ("Arial", 12, "bold")
+
         for row, store in enumerate(STORE_COL1):
-            lbl = ttk.Label(store_status_frame, text="", anchor='w', width=8)
-            lbl.grid(row=row, column=0, sticky="w")
+            lbl = tk.Label(store_status_frame, text="", anchor='center', width=8, font=label_font, justify='center')
+            lbl.grid(row=row, column=0, sticky="we", padx=2, pady=1)
             self.store_labels_col1.append(lbl)
 
         for row, store in enumerate(STORE_COL2):
-            lbl = ttk.Label(store_status_frame, text="", anchor='w', width=8)
-            lbl.grid(row=row, column=1, sticky="w")
+            lbl = tk.Label(store_status_frame, text="", anchor='center', width=8, font=label_font, justify='center')
+            lbl.grid(row=row, column=1, sticky="we", padx=2, pady=1)
             self.store_labels_col2.append(lbl)
 
         self.update_store_status_display()
@@ -116,6 +132,7 @@ class InventoryApp:
     def update_store_status_display(self):
         check, cross = "\u2714", "\u2716"
         for i, store in enumerate(STORE_COL1):
+            # Make sure we compare with zero-padded string keys
             uploaded = store in self.data
             symbol = check if uploaded else cross
             self.store_labels_col1[i]['text'] = f"{int(store):3} {symbol}"
@@ -170,7 +187,12 @@ class InventoryApp:
             if sheet.nrows < 37 or sheet.ncols < 7:
                 raise ValueError(f"Sheet too small: found {sheet.nrows} rows and {sheet.ncols} columns.")
             try:
-                store = str(sheet.cell_value(2, 6)).zfill(3)  # G3 is (2,6)
+                store_cell = sheet.cell_value(2, 6)  # G3
+                # Convert to string, strip .0 if float, zero-pad
+                if isinstance(store_cell, float):
+                    store = f"{int(store_cell):03}"
+                else:
+                    store = str(store_cell).zfill(3)
             except IndexError:
                 raise ValueError("Store code cell G3 (row 3, col 7) is missing in the sheet.")
             inventory = []
@@ -202,6 +224,8 @@ class InventoryApp:
         for path in paths:
             try:
                 store, inventory, foil = self.load_excel_file(path)
+                # Ensure store key is zero-padded string
+                store = f"{int(float(store)):03}"
                 self.data[store] = {"inventory": inventory, "foil": foil}
                 imported_stores.append(store)
             except Exception as e:
@@ -209,6 +233,7 @@ class InventoryApp:
 
         if imported_stores:
             self.save_data()
+            self.fix_data_store_keys()
             self.update_store_status_display()
             self.update_imported_stores_display()
             self.status.config(text=f"Imported stores: {', '.join(imported_stores)}")
@@ -297,6 +322,7 @@ class InventoryApp:
                 with open(import_path, 'r') as f:
                     imported = json.load(f)
                 self.data = imported.get("data", {})
+                self.fix_data_store_keys()
                 self.config = imported.get("config", {"download_path": "", "export_path": ""})
                 self.template = imported.get("template", {})
 
