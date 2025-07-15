@@ -186,10 +186,18 @@ class InventoryApp:
                 book = xlrd.open_workbook(path)
                 sheet = book.sheet_by_index(0)
                 self.template["date"] = sheet.cell_value(3, 2)  # C4 is (3,2)
-                self.template["items"] = [
-                    [sheet.cell_value(r, c) for c in range(3)] for r in range(7, 37)
-                ]  # A8:C37 is (7,0:37,2)
-                self.template["item_names"] = [row[0] for row in self.template["items"]]
+                items = []
+                item_names = []
+                # Rows 8-44 are 1-based; xlrd is 0-based => rows 7 to 43 inclusive
+                for r in range(7, 44):
+                    case_qty = str(sheet.cell_value(r, 0)).strip()
+                    size = str(sheet.cell_value(r, 1)).strip()
+                    desc = str(sheet.cell_value(r, 2)).strip()
+                    items.append({'case_qty': case_qty, 'size': size, 'description': desc})
+                    # For display, concatenate as requested
+                    item_names.append(f"{desc}, {size}, {case_qty}")
+                self.template["items"] = items
+                self.template["item_names"] = item_names
                 self.template["template_path"] = path
                 self.status.config(text=f"Template imported: {os.path.basename(path)}")
             except Exception as e:
@@ -200,7 +208,7 @@ class InventoryApp:
         if ext == ".xls":
             book = xlrd.open_workbook(path)
             sheet = book.sheet_by_index(0)
-            if sheet.nrows < 37 or sheet.ncols < 7:
+            if sheet.nrows < 44 or sheet.ncols < 7:
                 raise ValueError(f"Sheet too small: found {sheet.nrows} rows and {sheet.ncols} columns.")
             try:
                 store_cell = sheet.cell_value(2, 6)  # G3
@@ -210,8 +218,9 @@ class InventoryApp:
                     store = str(store_cell).zfill(3)
             except IndexError:
                 raise ValueError("Store code cell G3 (row 3, col 7) is missing in the sheet.")
+            # Inventory data from D8:D44 (col 3, rows 7..43)
             inventory = []
-            for i in range(7, 37):
+            for i in range(7, 44):
                 try:
                     inventory.append(sheet.cell_value(i, 3))
                 except IndexError:
@@ -261,7 +270,7 @@ class InventoryApp:
         wb_inv = xlwt.Workbook()
         ws_inv = wb_inv.add_sheet('Inventory')
         ws_inv.write(0, 0, "Store")
-        for i in range(30):
+        for i in range(37):  # Up to 37 items (rows 8-44)
             ws_inv.write(0, i+1, f"Item {i+1}")
         for row_idx, (store, info) in enumerate(self.data.items(), start=1):
             ws_inv.write(row_idx, 0, store)
@@ -361,6 +370,7 @@ class InventoryApp:
             return
 
         item_names = self.template["item_names"]
+        n_items = len(item_names)
         if not item_names:
             messagebox.showerror("No Item Names", "No item names found in template.")
             return
@@ -393,7 +403,7 @@ class InventoryApp:
         for col in columns:
             tree.heading(col, text=col)
             if col == "Item":
-                tree.column(col, width=180, anchor='w', minwidth=120, stretch=False)
+                tree.column(col, width=260, anchor='w', minwidth=130, stretch=False)
             else:
                 tree.column(col, width=60, anchor='center', minwidth=45, stretch=True)
         tree.pack(side="left", fill="both", expand=True)
@@ -402,7 +412,7 @@ class InventoryApp:
         for idx, item_name in enumerate(item_names):
             row_vals = [item_name]
             for store in ALL_STORES:
-                inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
+                inv = self.data.get(store, {}).get("inventory", [""] * n_items)
                 val = inv[idx] if idx < len(inv) else ""
                 row_vals.append(str(val))
             tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
@@ -438,11 +448,10 @@ class InventoryApp:
         def save_table_edits():
             for idx, rowid in enumerate(tree.get_children()):
                 values = tree.item(rowid)["values"]
-                # item_name = values[0]  # not needed for saving
                 for col_idx, store in enumerate(ALL_STORES, start=1):
                     val = values[col_idx]
-                    inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
-                    while len(inv) < len(item_names):
+                    inv = self.data.get(store, {}).get("inventory", [""] * n_items)
+                    while len(inv) < n_items:
                         inv.append("")
                     inv[idx] = val
                     foil = self.data.get(store, {}).get("foil", [""]*4)
