@@ -11,6 +11,7 @@ DATA_FILE = "data.json"
 
 STORE_COL1 = ["001", "003", "004", "005", "007", "008", "010", "011", "012", "014", "015", "017", "018", "019"]
 STORE_COL2 = ["201", "202", "203", "204", "205", "206", "207", "208", "209", "211", "214", "215", "216", "217"]
+ALL_STORES = STORE_COL1 + STORE_COL2
 
 class InventoryApp:
     def __init__(self, root):
@@ -88,7 +89,7 @@ class InventoryApp:
         btn_import_json = ttk.Button(frame, text="Import Data (JSON)", command=self.import_json_data)
         btn_import_json.grid(row=1, column=1, padx=5, pady=5)
 
-        # Store upload status columns (centered text)
+        # Store upload status columns (centered text, green checkmark)
         store_status_frame = ttk.LabelFrame(frame, text="Store Upload Status")
         store_status_frame.grid(row=2, column=0, columnspan=4, pady=10, sticky="we")
         for col in range(2):
@@ -140,12 +141,20 @@ class InventoryApp:
         check, cross = "\u2714", "\u2716"
         for i, store in enumerate(STORE_COL1):
             uploaded = store in self.data
-            symbol = check if uploaded else cross
-            self.store_labels_col1[i]['text'] = f"{int(store):3} {symbol}"
+            if uploaded:
+                self.store_labels_col1[i]['text'] = f"{int(store):3} {check}"
+                self.store_labels_col1[i]['fg'] = "#1ca41c"  # green
+            else:
+                self.store_labels_col1[i]['text'] = f"{int(store):3} {cross}"
+                self.store_labels_col1[i]['fg'] = "black"
         for i, store in enumerate(STORE_COL2):
             uploaded = store in self.data
-            symbol = check if uploaded else cross
-            self.store_labels_col2[i]['text'] = f"{int(store):3} {symbol}"
+            if uploaded:
+                self.store_labels_col2[i]['text'] = f"{int(store):3} {check}"
+                self.store_labels_col2[i]['fg'] = "#1ca41c"  # green
+            else:
+                self.store_labels_col2[i]['text'] = f"{int(store):3} {cross}"
+                self.store_labels_col2[i]['fg'] = "black"
 
     def update_imported_stores_display(self):
         if self.data:
@@ -180,6 +189,7 @@ class InventoryApp:
                 self.template["items"] = [
                     [sheet.cell_value(r, c) for c in range(3)] for r in range(7, 37)
                 ]  # A8:C37 is (7,0:37,2)
+                self.template["item_names"] = [row[0] for row in self.template["items"]]
                 self.template["template_path"] = path
                 self.status.config(text=f"Template imported: {os.path.basename(path)}")
             except Exception as e:
@@ -345,34 +355,89 @@ class InventoryApp:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
     def open_table_editor(self):
-        # Table-based editor for all imported stores
+        # Table-based editor: columns=store numbers, rows=item names from template
+        if "item_names" not in self.template or not self.template["item_names"]:
+            messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
+            return
+
+        item_names = self.template["item_names"]
+        if not item_names:
+            messagebox.showerror("No Item Names", "No item names found in template.")
+            return
+
         editor = tk.Toplevel(self.root)
-        editor.title("Store Data Table Editor")
-        editor.geometry("1000x600")
+        editor.title("Inventory Data Table Editor")
+        editor.geometry("1200x700")
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
-        top_frame = ttk.Frame(editor_frame)
-        top_frame.pack(fill='x')
-        ttk.Label(top_frame, text="Double-click any cell to edit.").pack(side="left", padx=5, pady=5)
-        ttk.Button(top_frame, text="Save All Changes", command=lambda: self.save_table_edits(tree, editor)).pack(side="right", padx=5, pady=5)
+        # Scrollbars
+        xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
+        xscroll.pack(side="bottom", fill="x")
+        yscroll = tk.Scrollbar(editor_frame, orient="vertical")
+        yscroll.pack(side="right", fill="y")
 
-        # Columns: Store, Inventory[0..29], Foil[0..3]
-        columns = ["Store"] + [f"Inv{i+1}" for i in range(30)] + [f"Foil{i+1}" for i in range(4)]
-        tree = ttk.Treeview(editor_frame, columns=columns, show="headings", height=20)
-        for col in columns:
-            tree.heading(col, text=col)
-            tree.column(col, width=60 if col != "Store" else 70, anchor='center', minwidth=45, stretch=True)
-        tree.pack(fill='both', expand=True)
+        # Table: columns = stores, rows = items
+        columns = ALL_STORES
+        tree = ttk.Treeview(
+            editor_frame,
+            columns=columns,
+            show="headings",
+            height=min(len(item_names), 25),
+            xscrollcommand=xscroll.set,
+            yscrollcommand=yscroll.set
+        )
+        xscroll.config(command=tree.xview)
+        yscroll.config(command=tree.yview)
 
-        # Fill rows
-        for store in sorted(self.data.keys(), key=lambda x: (len(x), x)):
-            inv = self.data[store].get("inventory", [""]*30)
-            foil = self.data[store].get("foil", [""]*4)
-            values = [store] + [str(x) for x in inv] + [str(x) for x in foil]
-            tree.insert("", "end", values=values)
+        # Add row name column using "#0"
+        tree["displaycolumns"] = columns  # Show only columns, not the #0 column
 
-        # Editing logic
+        for store in columns:
+            tree.heading(store, text=store)
+            tree.column(store, width=60, anchor='center', minwidth=45, stretch=True)
+
+        # Add rows with item names as first column (using tree.item 'text')
+        for idx, item_name in enumerate(item_names):
+            values = []
+            for store in columns:
+                inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
+                val = inv[idx] if idx < len(inv) else ""
+                values.append(str(val))
+            tree.insert("", "end", text=item_name, values=values, tags=(f"row_{idx}",))
+
+        # Add a special "row name" column to the left
+        tree["show"] = "headings"
+        # Add the item names as a separate label column
+        label_col_width = max(100, max(len(str(n)) for n in item_names) * 8)
+        label_frame = ttk.Frame(editor_frame)
+        label_frame.place(x=0, y=0, relheight=1)
+        label_canvas = tk.Canvas(label_frame, width=label_col_width, height=25*min(len(item_names), 25))
+        label_canvas.pack(side="left", fill="y")
+        label_scroll = tk.Scrollbar(label_frame, orient="vertical", command=label_canvas.yview)
+        label_scroll.pack(side="left", fill="y")
+        label_canvas.configure(yscrollcommand=label_scroll.set)
+        label_frame.pack_propagate(False)
+
+        # Draw labels for each row
+        row_labels = []
+        for idx, item_name in enumerate(item_names):
+            lbl = tk.Label(label_canvas, text=item_name, anchor="w", width=int(label_col_width/8), font=("Arial", 11))
+            label_canvas.create_window(0, idx*24, anchor="nw", window=lbl, width=label_col_width, height=24)
+            row_labels.append(lbl)
+
+        def sync_scroll(*args):
+            tree.yview(*args)
+            label_canvas.yview(*args)
+        def tree_yview(*args):
+            label_canvas.yview(*args)
+            yscroll.set(*args)
+
+        tree.configure(yscrollcommand=tree_yview)
+        label_canvas.configure(yscrollcommand=yscroll.set, scrollregion=(0,0,label_col_width,24*len(item_names)))
+        tree.pack(side="left", fill="both", expand=True)
+
+        # Cell editing logic
         def on_double_click(event):
             region = tree.identify("region", event.x, event.y)
             if region != "cell":
@@ -380,11 +445,10 @@ class InventoryApp:
             rowid = tree.identify_row(event.y)
             col = tree.identify_column(event.x)
             col_index = int(col.replace("#", "")) - 1
-            if col_index == 0:  # Don't allow editing store number
+            if rowid == "" or col_index < 0:
                 return
             x, y, width, height = tree.bbox(rowid, col)
             value = tree.set(rowid, columns[col_index])
-            # Create entry widget
             entry = tk.Entry(tree, width=8)
             entry.place(x=x, y=y, width=width, height=height)
             entry.insert(0, value)
@@ -400,22 +464,32 @@ class InventoryApp:
 
         tree.bind("<Double-1>", on_double_click)
 
-    def save_table_edits(self, tree, editor):
-        # Save all edits from the table back into self.data
-        for rowid in tree.get_children():
-            values = tree.item(rowid)["values"]
-            if not values:
-                continue
-            store = f"{int(float(values[0])):03}"
-            inv = [str(x) for x in values[1:31]]
-            foil = [str(x) for x in values[31:35]]
-            self.data[store] = {"inventory": inv, "foil": foil}
-        self.save_data()
-        self.update_store_status_display()
-        self.update_imported_stores_display()
-        messagebox.showinfo("Saved", "All table edits have been saved.")
-        editor.lift()
-        self.status.config(text="All table edits saved.")
+        # Save button
+        def save_table_edits():
+            for idx, rowid in enumerate(tree.get_children()):
+                item_name = item_names[idx]
+                values = tree.item(rowid)["values"]
+                for col_idx, val in enumerate(values):
+                    store = columns[col_idx]
+                    # Ensure store key is present in self.data
+                    inv = self.data.get(store, {}).get("inventory", [""]*len(item_names))
+                    while len(inv) < len(item_names):
+                        inv.append("")
+                    inv[idx] = val
+                    # Also preserve foil data
+                    foil = self.data.get(store, {}).get("foil", [""]*4)
+                    self.data[store] = {"inventory": inv, "foil": foil}
+            self.save_data()
+            self.update_store_status_display()
+            self.update_imported_stores_display()
+            messagebox.showinfo("Saved", "All table edits have been saved.")
+            editor.lift()
+            self.status.config(text="All table edits saved.")
+
+        savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
+        savebtn.pack(side="bottom", pady=5)
+
+    # (rest of the methods unchanged, already present above)
 
 def main():
     root = tk.Tk()
