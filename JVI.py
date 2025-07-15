@@ -11,6 +11,8 @@ from datetime import datetime
 CONFIG_FILE = "config.json"
 DATA_FILE = "data.json"
 
+#
+
 DEFAULT_STORE_COL1 = ["001", "003", "004", "005", "007", "008", "010", "011", "012", "014", "015", "017", "018", "019"]
 DEFAULT_STORE_COL2 = ["201", "202", "203", "204", "205", "206", "207", "208", "209", "211", "214", "215", "216", "217"]
 
