@@ -10,23 +10,24 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
 
-    - name: Install dependencies
-      run: |
-        pip install pyinstaller
-        pip install xlrd xlwt xlutils pandas openpyxl
-    - name: Build EXE
-      run: pyinstaller --onefile --noconfirm --windowed JVI.py
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install xlrd xlwt xlutils pandas openpyxl
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: Windows-EXE
-        path: dist/JVI.py
+      - name: Build EXE
+        run: pyinstaller --onefile --noconfirm --windowed JVI.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-EXE
+          path: dist/JVI.exe
