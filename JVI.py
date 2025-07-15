@@ -54,6 +54,7 @@ class InventoryApp:
             "foil_export_path": "",
             "inventory_template": "",
             "foil_template": "",
+            "total_export_template": "",
             "store_col1": DEFAULT_STORE_COL1,
             "store_col2": DEFAULT_STORE_COL2,
             "template_areas": {
@@ -100,14 +101,16 @@ class InventoryApp:
                     self.config["inventory_export_path"] = ""
                 if "foil_export_path" not in self.config:
                     self.config["foil_export_path"] = ""
+                if "total_export_template" not in self.config:
+                    self.config["total_export_template"] = ""
             except Exception:
-                # fallback/defaults
                 self.config = {
                     "download_path": "",
                     "inventory_export_path": "",
                     "foil_export_path": "",
                     "inventory_template": "",
                     "foil_template": "",
+                    "total_export_template": "",
                     "store_col1": DEFAULT_STORE_COL1,
                     "store_col2": DEFAULT_STORE_COL2,
                     "template_areas": {
@@ -169,32 +172,24 @@ class InventoryApp:
         area_menu.add_command(label="Set Template Import Areas", command=self.set_template_areas)
         area_menu.add_command(label="Set Store Sheet Import Areas", command=self.set_store_sheet_areas)
 
-        btn_template = ttk.Button(frame, text="Set Inventory Data Template", command=self.set_inventory_template_path)
-        btn_template.grid(row=0, column=0, padx=5, pady=5)
-
-        btn_foil_template = ttk.Button(frame, text="Set Foil Pan Template", command=self.set_foil_template_path)
-        btn_foil_template.grid(row=0, column=1, padx=5, pady=5)
-
-        btn_import_template = ttk.Button(frame, text="Import Item List from Inventory Template", command=self.import_template)
-        btn_import_template.grid(row=0, column=2, padx=5, pady=5)
-
+        # Button order: Import Store Sheet, Import Item List from Template, Export Combo, Export Data (JSON), Import Data (JSON)
         btn_import = ttk.Button(frame, text="Import Store Sheet", command=self.import_store_sheet)
-        btn_import.grid(row=0, column=3, padx=5, pady=5)
+        btn_import.grid(row=0, column=0, padx=5, pady=5)
 
-        btn_export_inventory = ttk.Button(frame, text="Export Inventory To Template", command=self.export_inventory_to_template)
-        btn_export_inventory.grid(row=1, column=0, padx=5, pady=5)
+        btn_import_template = ttk.Button(frame, text="Import Item List from Template", command=self.import_template)
+        btn_import_template.grid(row=0, column=1, padx=5, pady=5)
 
-        btn_export_foil = ttk.Button(frame, text="Export Foil Pan Order To Template", command=self.export_foil_to_template)
-        btn_export_foil.grid(row=1, column=1, padx=5, pady=5)
+        btn_export_combo = ttk.Button(frame, text="Export Inventory & Foil Pan (Combo Export)", command=self.export_combo)
+        btn_export_combo.grid(row=0, column=2, padx=5, pady=5)
 
         btn_export_json = ttk.Button(frame, text="Export Data (JSON)", command=self.export_json_data)
-        btn_export_json.grid(row=1, column=2, padx=5, pady=5)
+        btn_export_json.grid(row=0, column=3, padx=5, pady=5)
 
         btn_import_json = ttk.Button(frame, text="Import Data (JSON)", command=self.import_json_data)
-        btn_import_json.grid(row=1, column=3, padx=5, pady=5)
+        btn_import_json.grid(row=0, column=4, padx=5, pady=5)
 
         store_status_frame = ttk.LabelFrame(frame, text="Store Upload Status")
-        store_status_frame.grid(row=2, column=0, columnspan=4, pady=10, sticky="we")
+        store_status_frame.grid(row=2, column=0, columnspan=5, pady=10, sticky="we")
         for col in range(2):
             store_status_frame.grid_columnconfigure(col, weight=1)
 
@@ -216,7 +211,7 @@ class InventoryApp:
         self.update_store_status_display()
 
         path_frame = ttk.LabelFrame(frame, text="Folders and Template Files")
-        path_frame.grid(row=3, column=0, columnspan=4, pady=10, sticky='we')
+        path_frame.grid(row=3, column=0, columnspan=5, pady=10, sticky='we')
 
         ttk.Label(path_frame, text="Downloads Folder:").grid(row=0, column=0, sticky='e')
         self.download_entry = ttk.Entry(path_frame, width=50)
@@ -248,15 +243,21 @@ class InventoryApp:
         self.foil_template_entry.insert(0, self.config.get("foil_template", ""))
         ttk.Button(path_frame, text="Set", command=self.set_foil_template_path).grid(row=4, column=2)
 
+        ttk.Label(path_frame, text="Total Export Template:").grid(row=5, column=0, sticky='e')
+        self.total_template_entry = ttk.Entry(path_frame, width=50)
+        self.total_template_entry.grid(row=5, column=1, padx=5)
+        self.total_template_entry.insert(0, self.config.get("total_export_template", ""))
+        ttk.Button(path_frame, text="Set", command=self.set_total_export_template_path).grid(row=5, column=2)
+
         imported_frame = ttk.LabelFrame(frame, text="Imported Stores (all)")
-        imported_frame.grid(row=5, column=0, columnspan=4, pady=10, sticky="we")
+        imported_frame.grid(row=4, column=0, columnspan=5, pady=10, sticky="we")
         self.imported_stores_var = tk.StringVar()
         self.imported_stores_label = ttk.Label(imported_frame, textvariable=self.imported_stores_var, anchor="w", justify="left")
         self.imported_stores_label.pack(fill='both', expand=True)
         self.update_imported_stores_display()
 
         self.status = ttk.Label(frame, text="Status: Ready")
-        self.status.grid(row=6, column=0, columnspan=4, pady=10)
+        self.status.grid(row=5, column=0, columnspan=5, pady=10)
 
     def update_store_status_display(self):
         check, cross = "\u2714", "\u2716"
@@ -328,6 +329,14 @@ class InventoryApp:
             self.foil_template_entry.insert(0, path)
             self.save_config()
 
+    def set_total_export_template_path(self):
+        path = filedialog.askopenfilename(filetypes=[("Excel 97-2003", "*.xls")])
+        if path:
+            self.config["total_export_template"] = path
+            self.total_template_entry.delete(0, tk.END)
+            self.total_template_entry.insert(0, path)
+            self.save_config()
+
     def parse_cell(self, ref):
         ref = ref.strip().upper()
         for i, c in enumerate(ref):
@@ -377,7 +386,6 @@ class InventoryApp:
             book = xlrd.open_workbook(path)
             sheet = book.sheet_by_index(0)
             areas = self.config.get("template_areas", {})
-            # Date cell
             date_val = ""
             try:
                 row, col = self.parse_cell(areas.get("date_cell", "C4"))
@@ -385,7 +393,6 @@ class InventoryApp:
             except Exception:
                 pass
             self.template["date"] = date_val
-            # Pack, size, desc ranges
             pack_r1, pack_c1, pack_r2, pack_c2 = self.parse_range(areas.get("pack_range", "A8:A44"))
             size_r1, size_c1, size_r2, size_c2 = self.parse_range(areas.get("size_range", "B8:B44"))
             desc_r1, desc_c1, desc_r2, desc_c2 = self.parse_range(areas.get("desc_range", "C8:C44"))
@@ -509,6 +516,8 @@ class InventoryApp:
                 self.inv_template_entry.insert(0, self.config.get("inventory_template", ""))
                 self.foil_template_entry.delete(0, tk.END)
                 self.foil_template_entry.insert(0, self.config.get("foil_template", ""))
+                self.total_template_entry.delete(0, tk.END)
+                self.total_template_entry.insert(0, self.config.get("total_export_template", ""))
 
                 self.save_data()
                 self.save_config()
@@ -539,14 +548,9 @@ class InventoryApp:
         wb = xl_copy(rb)
         ws = wb.get_sheet(0)
 
-        # Write date in cell A2 (row 1, col 0)
         ws.write(1, 0, date_str)
-
-        # Write concatenated item description in cells A5:A34 (row 4-33, col 0)
         for i, item_display in enumerate(item_names):
             ws.write(4 + i, 0, item_display)
-
-        # Write inventory data for each store in corresponding columns (B5:B34 for first store, ...)
         for store_idx, store in enumerate(stores):
             col = 1 + store_idx
             inv = self.data.get(store, {}).get("inventory", [""] * len(item_names))
@@ -574,12 +578,6 @@ class InventoryApp:
         rb = xlrd.open_workbook(out_path, formatting_info=True)
         wb = xl_copy(rb)
         ws = wb.get_sheet(0)
-
-        # B5:B34 (col 1, rows 4-33): store number
-        # C5:C34 (col 2, rows 4-33): foil[0]
-        # D5:D34 (col 3, rows 4-33): foil[1]
-        # E5:E34 (col 4, rows 4-33): foil[2]
-        # F5:F34 (col 5, rows 4-33): foil[3]
         for i, store in enumerate(stores):
             ws.write(4 + i, 1, store)
             foil = self.data.get(store, {}).get("foil", [""] * 4)
@@ -591,6 +589,15 @@ class InventoryApp:
         wb.save(out_path)
         self.status.config(text=f"Foil pan order exported to {out_path}")
         messagebox.showinfo("Export Complete", f"Foil pan order exported to {out_path}")
+
+    def export_combo(self):
+        self.export_inventory_to_template()
+        self.export_foil_to_template()
+        total_template = self.config.get("total_export_template", "")
+        if total_template and os.path.exists(total_template):
+            # If you want a separate "total" export, you can implement a custom export here.
+            # For now, just notify user that the template is available.
+            self.status.config(text=self.status.cget("text") + " | Total Export Template set.")
 
     def open_table_editor(self):
         if "item_names" not in self.template or not self.template["item_names"]:
@@ -610,7 +617,6 @@ class InventoryApp:
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
-        # Style for smaller font
         style = ttk.Style(editor)
         style.configure("Treeview", font=("Arial", 9), rowheight=18)
         style.configure("Treeview.Heading", font=("Arial", 9, "bold"))
