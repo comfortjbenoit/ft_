@@ -14,6 +14,38 @@ DATA_FILE = "data.json"
 DEFAULT_STORE_COL1 = ["001", "003", "004", "005", "007", "008", "010", "011", "012", "014", "015", "017", "018", "019"]
 DEFAULT_STORE_COL2 = ["201", "202", "203", "204", "205", "206", "207", "208", "209", "211", "214", "215", "216", "217"]
 
+def colname2idx(name):
+    """Convert Excel column name (A, B, ... AA...) to 0-based index"""
+    name = name.upper()
+    idx = 0
+    for c in name:
+        idx = idx * 26 + (ord(c) - ord('A') + 1)
+    return idx - 1
+
+class AreaDialog(simpledialog.Dialog):
+    """Dialog to set the cell/range import areas for templates and sheets."""
+
+    def __init__(self, parent, title, fields, initial_values=None):
+        self.fields = fields
+        self.initial_values = initial_values or {}
+        self.values = {}
+        super().__init__(parent, title)
+
+    def body(self, master):
+        self.entries = {}
+        for i, field in enumerate(self.fields):
+            tk.Label(master, text=field).grid(row=i, column=0, sticky="e")
+            val = self.initial_values.get(field, "")
+            entry = tk.Entry(master)
+            entry.grid(row=i, column=1)
+            entry.insert(0, val)
+            self.entries[field] = entry
+        return list(self.entries.values())[0]
+
+    def apply(self):
+        for field, entry in self.entries.items():
+            self.values[field] = entry.get().strip()
+
 class InventoryApp:
     def __init__(self, root):
         self.root = root
@@ -25,7 +57,19 @@ class InventoryApp:
             "inventory_template": "",
             "foil_template": "",
             "store_col1": DEFAULT_STORE_COL1,
-            "store_col2": DEFAULT_STORE_COL2
+            "store_col2": DEFAULT_STORE_COL2,
+            # Default area settings (can be changed via GUI)
+            "template_areas": {
+                "date_cell": "C4",
+                "pack_range": "A8:A44",
+                "size_range": "B8:B44",
+                "desc_range": "C8:C44"
+            },
+            "store_sheet_areas": {
+                "store_cell": "G3",
+                "inventory_range": "D8:D44",
+                "foil_range": "G8:G11"
+            }
         }
         self.template = {}
 
@@ -38,11 +82,24 @@ class InventoryApp:
             try:
                 with open(CONFIG_FILE, 'r') as f:
                     self.config = json.load(f)
-                # Fallback if old config exists
+                # Fallback for missing keys
                 if "store_col1" not in self.config:
                     self.config["store_col1"] = DEFAULT_STORE_COL1
                 if "store_col2" not in self.config:
                     self.config["store_col2"] = DEFAULT_STORE_COL2
+                if "template_areas" not in self.config:
+                    self.config["template_areas"] = {
+                        "date_cell": "C4",
+                        "pack_range": "A8:A44",
+                        "size_range": "B8:B44",
+                        "desc_range": "C8:C44"
+                    }
+                if "store_sheet_areas" not in self.config:
+                    self.config["store_sheet_areas"] = {
+                        "store_cell": "G3",
+                        "inventory_range": "D8:D44",
+                        "foil_range": "G8:G11"
+                    }
             except Exception:
                 self.config = {
                     "download_path": "",
@@ -50,7 +107,18 @@ class InventoryApp:
                     "inventory_template": "",
                     "foil_template": "",
                     "store_col1": DEFAULT_STORE_COL1,
-                    "store_col2": DEFAULT_STORE_COL2
+                    "store_col2": DEFAULT_STORE_COL2,
+                    "template_areas": {
+                        "date_cell": "C4",
+                        "pack_range": "A8:A44",
+                        "size_range": "B8:B44",
+                        "desc_range": "C8:C44"
+                    },
+                    "store_sheet_areas": {
+                        "store_cell": "G3",
+                        "inventory_range": "D8:D44",
+                        "foil_range": "G8:G11"
+                    }
                 }
 
     def save_config(self):
@@ -94,6 +162,11 @@ class InventoryApp:
         store_menu.add_command(label="Open Table Editor", command=self.open_table_editor)
         store_menu.add_separator()
         store_menu.add_command(label="Manage Store Numbers", command=self.manage_stores)
+
+        area_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Areas", menu=area_menu)
+        area_menu.add_command(label="Set Template Import Areas", command=self.set_template_areas)
+        area_menu.add_command(label="Set Store Sheet Import Areas", command=self.set_store_sheet_areas)
 
         btn_template = ttk.Button(frame, text="Import Inventory Data Template", command=self.set_inventory_template_path)
         btn_template.grid(row=0, column=0, padx=5, pady=5)
@@ -241,6 +314,43 @@ class InventoryApp:
             self.foil_template_entry.insert(0, path)
             self.save_config()
 
+    def parse_cell(self, ref):
+        # Returns (row_idx, col_idx), e.g. "C4"->(3,2)
+        ref = ref.strip().upper()
+        for i, c in enumerate(ref):
+            if c.isdigit():
+                break
+        col = ref[:i]
+        row = ref[i:]
+        return int(row)-1, colname2idx(col)
+
+    def parse_range(self, ref):
+        # Returns (row1, col1, row2, col2) for e.g. "A8:C44"
+        if ":" in ref:
+            a, b = ref.split(":")
+            r1, c1 = self.parse_cell(a)
+            r2, c2 = self.parse_cell(b)
+            return r1, c1, r2, c2
+        else:
+            r, c = self.parse_cell(ref)
+            return r, c, r, c
+
+    def set_template_areas(self):
+        fields = ["date_cell", "pack_range", "size_range", "desc_range"]
+        initial = self.config.get("template_areas", {})
+        dlg = AreaDialog(self.root, "Set Template Import Areas", fields, initial)
+        if dlg.values:
+            self.config["template_areas"] = dlg.values
+            self.save_config()
+
+    def set_store_sheet_areas(self):
+        fields = ["store_cell", "inventory_range", "foil_range"]
+        initial = self.config.get("store_sheet_areas", {})
+        dlg = AreaDialog(self.root, "Set Store Sheet Import Areas", fields, initial)
+        if dlg.values:
+            self.config["store_sheet_areas"] = dlg.values
+            self.save_config()
+
     def import_template(self):
         path = self.config.get("inventory_template")
         if not path or not os.path.exists(path):
@@ -254,22 +364,32 @@ class InventoryApp:
         try:
             book = xlrd.open_workbook(path)
             sheet = book.sheet_by_index(0)
-            # C4 = date (for reference)
-            self.template["date"] = str(sheet.cell_value(3, 2)).strip() if sheet.nrows > 3 and sheet.ncols > 2 else ""
+            areas = self.config.get("template_areas", {})
+            # Date cell
+            date_val = ""
+            try:
+                row, col = self.parse_cell(areas.get("date_cell", "C4"))
+                date_val = str(sheet.cell_value(row, col)).strip()
+            except Exception:
+                pass
+            self.template["date"] = date_val
+            # Pack, size, desc ranges
+            pack_r1, pack_c1, pack_r2, pack_c2 = self.parse_range(areas.get("pack_range", "A8:A44"))
+            size_r1, size_c1, size_r2, size_c2 = self.parse_range(areas.get("size_range", "B8:B44"))
+            desc_r1, desc_c1, desc_r2, desc_c2 = self.parse_range(areas.get("desc_range", "C8:C44"))
+            n_items = max(pack_r2-pack_r1+1, size_r2-size_r1+1, desc_r2-desc_r1+1)
             items = []
             item_names = []
-            # a8:a44 = pack (col 0), b8:b44 = size (col 1), c8:c44 = desc (col 2)
-            for r in range(7, 44):  # 8-44 in Excel is 7-43 in xlrd
-                row_vals = []
-                for c in range(3):
-                    try:
-                        val = sheet.cell_value(r, c)
-                    except IndexError:
-                        val = ""
-                    row_vals.append(str(val).strip())
-                case_qty, size, desc = row_vals
-                items.append({'case_qty': case_qty, 'size': size, 'description': desc})
-                display_name = f"{desc}, {size}, {case_qty}".strip(", ")
+            for i in range(n_items):
+                # Defensive: only if cell exists
+                try: pack = str(sheet.cell_value(pack_r1+i, pack_c1)).strip()
+                except Exception: pack = ""
+                try: size = str(sheet.cell_value(size_r1+i, size_c1)).strip()
+                except Exception: size = ""
+                try: desc = str(sheet.cell_value(desc_r1+i, desc_c1)).strip()
+                except Exception: desc = ""
+                items.append({'case_qty': pack, 'size': size, 'description': desc})
+                display_name = f"{desc}, {size}, {pack}".strip(", ")
                 item_names.append(display_name)
             self.template["items"] = items
             self.template["item_names"] = item_names
@@ -280,35 +400,39 @@ class InventoryApp:
 
     def load_excel_file(self, path):
         ext = os.path.splitext(path)[1].lower()
-        if ext == ".xls":
-            book = xlrd.open_workbook(path)
-            sheet = book.sheet_by_index(0)
-            if sheet.nrows < 44 or sheet.ncols < 7:
-                raise ValueError(f"Sheet too small: found {sheet.nrows} rows and {sheet.ncols} columns.")
-            try:
-                store_cell = sheet.cell_value(2, 6)  # G3
+        areas = self.config.get("store_sheet_areas", {})
+        try:
+            if ext == ".xls":
+                book = xlrd.open_workbook(path)
+                sheet = book.sheet_by_index(0)
+                # Store cell
+                store_row, store_col = self.parse_cell(areas.get("store_cell", "G3"))
+                store_cell = sheet.cell_value(store_row, store_col)
                 if isinstance(store_cell, float):
                     store = f"{int(store_cell):03}"
                 else:
                     store = str(store_cell).zfill(3)
-            except IndexError:
-                raise ValueError("Store code cell G3 (row 3, col 7) is missing in the sheet.")
-            # D8:D44 = col 3, rows 7-43
-            inventory = []
-            for i in range(7, 44):
-                try:
-                    inventory.append(sheet.cell_value(i, 3))
-                except IndexError:
-                    inventory.append("")
-            foil = []
-            for i in range(7, 11):
-                try:
-                    foil.append(sheet.cell_value(i, 6))
-                except IndexError:
-                    foil.append("")
-        else:
-            raise ValueError("Unsupported file format. Only .xls files are supported.")
-        return store, inventory, foil
+                # Inventory range
+                ir1, ic1, ir2, ic2 = self.parse_range(areas.get("inventory_range", "D8:D44"))
+                inventory = []
+                for i in range(ir2-ir1+1):
+                    try:
+                        inventory.append(sheet.cell_value(ir1+i, ic1))
+                    except Exception:
+                        inventory.append("")
+                # Foil range
+                fr1, fc1, fr2, fc2 = self.parse_range(areas.get("foil_range", "G8:G11"))
+                foil = []
+                for i in range(fr2-fr1+1):
+                    try:
+                        foil.append(sheet.cell_value(fr1+i, fc1))
+                    except Exception:
+                        foil.append("")
+            else:
+                raise ValueError("Unsupported file format. Only .xls files are supported.")
+            return store, inventory, foil
+        except Exception as e:
+            raise Exception(f"Import error: {e}")
 
     def import_store_sheet(self):
         paths = filedialog.askopenfilenames(
@@ -399,7 +523,6 @@ class InventoryApp:
         item_names = self.template.get("item_names", [])
         date_str = self.template.get("date", datetime.today().strftime("%m-%d-%Y"))
 
-        # Copy template to target file
         out_path = os.path.join(export_folder, f"Final Inventory {date_str}.xls")
         shutil.copy(template_path, out_path)
         rb = xlrd.open_workbook(out_path, formatting_info=True)
@@ -413,9 +536,9 @@ class InventoryApp:
         for i, item_display in enumerate(item_names):
             ws.write(4 + i, 0, item_display)
 
-        # Write inventory data for each store in corresponding columns (B5:B34 for first store, C5:C34 for second, etc.)
+        # Write inventory data for each store in corresponding columns (B5:B34 for first store, etc.)
         for store_idx, store in enumerate(stores):
-            col = 1 + store_idx  # B is 1, C is 2, ...
+            col = 1 + store_idx
             inv = self.data.get(store, {}).get("inventory", [""] * len(item_names))
             for row_idx in range(len(item_names)):
                 ws.write(4 + row_idx, col, inv[row_idx] if row_idx < len(inv) else "")
@@ -443,10 +566,10 @@ class InventoryApp:
         ws = wb.get_sheet(0)
 
         # B5:B34 (col 1, rows 4-33): store number
-        # C5:C34 (col 2, rows 4-33): foil[0] (cell G8)
-        # D5:D34 (col 3, rows 4-33): foil[1] (cell G9)
-        # E5:E34 (col 4, rows 4-33): foil[2] (cell G10)
-        # F5:F34 (col 5, rows 4-33): foil[3] (cell G11)
+        # C5:C34 (col 2, rows 4-33): foil[0]
+        # D5:D34 (col 3, rows 4-33): foil[1]
+        # E5:E34 (col 4, rows 4-33): foil[2]
+        # F5:F34 (col 5, rows 4-33): foil[3]
         for i, store in enumerate(stores):
             ws.write(4 + i, 1, store)
             foil = self.data.get(store, {}).get("foil", [""] * 4)
@@ -572,7 +695,6 @@ class InventoryApp:
         frame = ttk.Frame(win, padding=10)
         frame.pack(fill="both", expand=True)
 
-        # Left = col1, right = col2
         ttk.Label(frame, text="Store Column 1").grid(row=0, column=0, padx=5)
         ttk.Label(frame, text="Store Column 2").grid(row=0, column=2, padx=5)
 
