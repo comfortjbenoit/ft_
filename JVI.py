@@ -88,7 +88,6 @@ class InventoryApp:
             try:
                 with open(CONFIG_FILE, 'r') as f:
                     self.config = json.load(f)
-                # Patch config with new keys if missing
                 if "store_col1" not in self.config:
                     self.config["store_col1"] = DEFAULT_STORE_COL1
                 if "store_col2" not in self.config:
@@ -261,15 +260,21 @@ class InventoryApp:
 
         self.update_store_status_display()
 
-        imported_frame = ttk.LabelFrame(frame, text="Imported Stores (all)")
+        # Progress bar for imported stores
+        imported_frame = ttk.LabelFrame(frame, text="Imported Stores Progress")
         imported_frame.grid(row=4, column=0, columnspan=5, pady=10, sticky="we")
-        self.imported_stores_var = tk.StringVar()
-        self.imported_stores_label = ttk.Label(imported_frame, textvariable=self.imported_stores_var, anchor="w", justify="left")
-        self.imported_stores_label.pack(fill='both', expand=True)
-        self.update_imported_stores_display()
+        self.imported_progress = ttk.Progressbar(imported_frame, orient="horizontal", length=700, mode="determinate")
+        self.imported_progress.pack(fill='x', padx=10, pady=8)
+        self.update_imported_stores_progress()
 
         self.status = ttk.Label(frame, text="Status: Ready")
         self.status.grid(row=5, column=0, columnspan=5, pady=10)
+
+        # Make window maximizable and resizable
+        self.root.update()
+        self.root.minsize(1000, 700)
+        self.root.geometry("1200x800")
+        self.root.resizable(True, True)
 
     def update_store_status_display(self):
         check, cross = "\u2714", "\u2716"
@@ -293,13 +298,13 @@ class InventoryApp:
                 else:
                     self.store_labels_col2[i]['text'] = f"{int(store):3} {cross}"
                     self.store_labels_col2[i]['fg'] = "black"
+        self.update_imported_stores_progress()
 
-    def update_imported_stores_display(self):
-        if self.data:
-            stores = sorted(self.data.keys(), key=lambda x: (len(x), x))
-            self.imported_stores_var.set(", ".join(stores))
-        else:
-            self.imported_stores_var.set("None")
+    def update_imported_stores_progress(self):
+        total_stores = len(self.get_all_stores())
+        imported = len([s for s in self.get_all_stores() if s in self.data])
+        self.imported_progress["maximum"] = total_stores
+        self.imported_progress["value"] = imported
 
     # Settings menu methods
     def set_download_path(self):
@@ -488,7 +493,6 @@ class InventoryApp:
             self.save_data()
             self.fix_data_store_keys()
             self.update_store_status_display()
-            self.update_imported_stores_display()
             self.status.config(text=f"Imported stores: {', '.join(imported_stores)}")
 
     def export_json_data(self):
@@ -524,7 +528,6 @@ class InventoryApp:
                 self.save_data()
                 self.save_config()
                 self.update_store_status_display()
-                self.update_imported_stores_display()
                 self.status.config(text=f"Data imported from {os.path.basename(import_path)}")
             except Exception as e:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
@@ -626,13 +629,26 @@ class InventoryApp:
         stores = self.get_all_stores()
         editor = tk.Toplevel(self.root)
         editor.title("Inventory Data Table Editor")
-        editor.geometry("1200x700")
+        editor.geometry("1400x800")
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
+        # Font settings: Increase font size by 1pt (was 7, now 8)
+        font_size = 8
+        table_font = ("Arial", font_size)
+        heading_font = ("Arial", font_size + 1, "bold")
+
         style = ttk.Style(editor)
-        style.configure("Treeview", font=("Arial", 7), rowheight=18)
-        style.configure("Treeview.Heading", font=("Arial", 8, "bold"))
+        style.configure("Treeview", font=table_font, rowheight=19)
+        style.configure("Treeview.Heading", font=heading_font)
+
+        # Less padding between columns for compactness
+        style.layout("Treeview.Cell", [
+            ('Treeitem.padding', {'sticky': 'nswe', 'children': [
+                ('Treeitem.image', {'side': 'left', 'sticky': ''}),
+                ('Treeitem.text', {'side': 'left', 'sticky': '', 'padding': [1, 0, 1, 0]}),  # minimal padding
+            ]})
+        ])
 
         xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
         xscroll.pack(side="bottom", fill="x")
@@ -655,9 +671,9 @@ class InventoryApp:
         for col in columns:
             tree.heading(col, text=col)
             if col == "Item":
-                tree.column(col, width=320, anchor='w', minwidth=150, stretch=False)
+                tree.column(col, width=300, anchor='w', minwidth=120, stretch=True)
             else:
-                tree.column(col, width=60, anchor='center', minwidth=45, stretch=True)
+                tree.column(col, width=44, anchor='center', minwidth=25, stretch=True)
         tree.pack(side="left", fill="both", expand=True)
 
         for idx, item_name in enumerate(item_names):
@@ -679,7 +695,7 @@ class InventoryApp:
                 return
             x, y, width, height = tree.bbox(rowid, col)
             value = tree.set(rowid, columns[col_index])
-            entry = tk.Entry(tree, width=8, font=("Arial", 9))
+            entry = tk.Entry(tree, width=8, font=table_font)
             entry.place(x=x, y=y, width=width, height=height)
             entry.insert(0, value)
             entry.focus()
@@ -707,13 +723,25 @@ class InventoryApp:
                     self.data[store] = {"inventory": inv, "foil": foil}
             self.save_data()
             self.update_store_status_display()
-            self.update_imported_stores_display()
             messagebox.showinfo("Saved", "All table edits have been saved.")
             editor.lift()
             self.status.config(text="All table edits saved.")
 
         savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
         savebtn.pack(side="bottom", pady=5)
+
+        # Allow maximizing and dynamically resizing columns
+        def resize_columns(event=None):
+            width = editor.winfo_width()
+            n_store_cols = max(1, len(stores))
+            item_col_width = min(400, max(150, int(width * 0.35)))
+            store_col_width = max(25, int((width - item_col_width - 60) / n_store_cols))
+            tree.column("Item", width=item_col_width)
+            for col in stores:
+                tree.column(col, width=store_col_width)
+
+        editor.bind('<Configure>', resize_columns)
+        resize_columns()
 
     def manage_stores(self):
         def refresh_lists():
@@ -782,7 +810,6 @@ class InventoryApp:
             self.template = {}
             self.save_data()
             self.update_store_status_display()
-            self.update_imported_stores_display()
             self.status.config(text="All data cleared.")
 
 def main():
