@@ -181,13 +181,13 @@ class InventoryApp:
         btn_import_template = ttk.Button(frame, text="Import Item List from Template", command=self.import_template)
         btn_import_template.grid(row=0, column=1, padx=5, pady=5)
 
-        btn_export_combo = ttk.Button(frame, text="Export Inventory & Foil Pan (Combo Export)", command=self.export_combo)
+        btn_export_combo = ttk.Button(frame, text="Export Final Totals", command=self.export_combo)
         btn_export_combo.grid(row=0, column=2, padx=5, pady=5)
 
-        btn_export_json = ttk.Button(frame, text="Export Data (JSON)", command=self.export_json_data)
+        btn_export_json = ttk.Button(frame, text="Export Data", command=self.export_json_data)
         btn_export_json.grid(row=0, column=3, padx=5, pady=5)
 
-        btn_import_json = ttk.Button(frame, text="Import Data (JSON)", command=self.import_json_data)
+        btn_import_json = ttk.Button(frame, text="Import Data", command=self.import_json_data)
         btn_import_json.grid(row=0, column=4, padx=5, pady=5)
 
         store_status_frame = ttk.LabelFrame(frame, text="Store Upload Status")
@@ -198,7 +198,7 @@ class InventoryApp:
         self.store_labels_col1 = []
         self.store_labels_col2 = []
 
-        label_font = ("Arial", 12, "bold")
+        label_font = ("Arial", 10, "bold")
 
         for row, store in enumerate(self.config["store_col1"]):
             lbl = tk.Label(store_status_frame, text="", anchor='center', width=8, font=label_font, justify='center')
@@ -212,40 +212,40 @@ class InventoryApp:
 
         self.update_store_status_display()
 
-        path_frame = ttk.LabelFrame(frame, text="Folders and Template Files")
+        path_frame = ttk.LabelFrame(frame, text="Folder and Template Settings")
         path_frame.grid(row=3, column=0, columnspan=5, pady=10, sticky='we')
 
-        ttk.Label(path_frame, text="Downloads Folder:").grid(row=0, column=0, sticky='e')
+        ttk.Label(path_frame, text="Downloads Folder:").grid(row=0, column=0, sticky='e', justify="left")
         self.download_entry = ttk.Entry(path_frame, width=50)
         self.download_entry.grid(row=0, column=1, padx=5)
         self.download_entry.insert(0, self.config.get("download_path", ""))
         ttk.Button(path_frame, text="Set", command=self.set_download_path).grid(row=0, column=2)
 
-        ttk.Label(path_frame, text="Inventory Export Folder:").grid(row=1, column=0, sticky='e')
+        ttk.Label(path_frame, text="Final Inventory Folder:").grid(row=1, column=0, sticky='e', justify="left")
         self.inventory_export_entry = ttk.Entry(path_frame, width=50)
         self.inventory_export_entry.grid(row=1, column=1, padx=5)
         self.inventory_export_entry.insert(0, self.config.get("inventory_export_path", ""))
         ttk.Button(path_frame, text="Set", command=self.set_inventory_export_path).grid(row=1, column=2)
 
-        ttk.Label(path_frame, text="Foil Pan Export Folder:").grid(row=2, column=0, sticky='e')
+        ttk.Label(path_frame, text="Foil Pan Folder:").grid(row=2, column=0, sticky='e', justify="left")
         self.foil_export_entry = ttk.Entry(path_frame, width=50)
         self.foil_export_entry.grid(row=2, column=1, padx=5)
         self.foil_export_entry.insert(0, self.config.get("foil_export_path", ""))
         ttk.Button(path_frame, text="Set", command=self.set_foil_export_path).grid(row=2, column=2)
 
-        ttk.Label(path_frame, text="Inventory Template:").grid(row=3, column=0, sticky='e')
+        ttk.Label(path_frame, text="This Week's Inventory:").grid(row=3, column=0, sticky='e', justify="left")
         self.inv_template_entry = ttk.Entry(path_frame, width=50)
         self.inv_template_entry.grid(row=3, column=1, padx=5)
         self.inv_template_entry.insert(0, self.config.get("inventory_template", ""))
         ttk.Button(path_frame, text="Set", command=self.set_inventory_template_path).grid(row=3, column=2)
 
-        ttk.Label(path_frame, text="Foil Pan Template:").grid(row=4, column=0, sticky='e')
+        ttk.Label(path_frame, text="Foil Pan Template:").grid(row=4, column=0, sticky='e', justify="left")
         self.foil_template_entry = ttk.Entry(path_frame, width=50)
         self.foil_template_entry.grid(row=4, column=1, padx=5)
         self.foil_template_entry.insert(0, self.config.get("foil_template", ""))
         ttk.Button(path_frame, text="Set", command=self.set_foil_template_path).grid(row=4, column=2)
 
-        ttk.Label(path_frame, text="Total Export Template:").grid(row=5, column=0, sticky='e')
+        ttk.Label(path_frame, text="Final Inventory Template:").grid(row=5, column=0, sticky='e', justify="left")
         self.total_template_entry = ttk.Entry(path_frame, width=50)
         self.total_template_entry.grid(row=5, column=1, padx=5)
         self.total_template_entry.insert(0, self.config.get("total_export_template", ""))
@@ -620,8 +620,8 @@ class InventoryApp:
         editor_frame.pack(fill='both', expand=True)
 
         style = ttk.Style(editor)
-        style.configure("Treeview", font=("Arial", 9), rowheight=18)
-        style.configure("Treeview.Heading", font=("Arial", 9, "bold"))
+        style.configure("Treeview", font=("Arial", 7), rowheight=18)
+        style.configure("Treeview.Heading", font=("Arial", 8, "bold"))
 
         xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
         xscroll.pack(side="bottom", fill="x")
