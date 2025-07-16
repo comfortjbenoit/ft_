@@ -258,14 +258,13 @@ class InventoryApp:
             lbl.grid(row=row, column=1, sticky="we", padx=2, pady=1)
             self.store_labels_col2.append(lbl)
 
-        self.update_store_status_display()
-
         # Progress bar for imported stores
         imported_frame = ttk.LabelFrame(frame, text="Imported Stores Progress")
         imported_frame.grid(row=4, column=0, columnspan=5, pady=10, sticky="we")
         self.imported_progress = ttk.Progressbar(imported_frame, orient="horizontal", length=700, mode="determinate")
         self.imported_progress.pack(fill='x', padx=10, pady=8)
-        self.update_imported_stores_progress()
+
+        self.update_store_status_display()  # <-- Now after imported_progress is created
 
         self.status = ttk.Label(frame, text="Status: Ready")
         self.status.grid(row=5, column=0, columnspan=5, pady=10)
