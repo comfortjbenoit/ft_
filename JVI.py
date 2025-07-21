@@ -532,7 +532,7 @@ class InventoryApp:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
     def export_inventory_to_template(self):
-        template_path = self.config.get("inventory_template", "")
+        template_path = self.config.get("total_export_template", "")
         export_folder = self.config.get("inventory_export_path", "")
         areas = self.config.get("export_inventory_areas", {})
         if not template_path or not os.path.exists(template_path):
