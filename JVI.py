@@ -269,15 +269,12 @@ class InventoryApp:
         self.status = ttk.Label(frame, text="Status: Ready")
         self.status.grid(row=5, column=0, columnspan=5, pady=10)
 
-        # Make window maximizable and resizable
-        self.root.update()
-        # --- Fix main window sizing to fit content, not excessively large ---
+        # Reasonable window size and centering
         preferred_width = 800
         preferred_height = 600
         self.root.minsize(600, 400)
         self.root.geometry(f"{preferred_width}x{preferred_height}")
         self.root.resizable(True, True)
-        # Optionally center the window on screen (cross-platform)
         self.root.update_idletasks()
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
@@ -541,7 +538,25 @@ class InventoryApp:
             except Exception as e:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
-    # --- PATCH BELOW: export_inventory_to_template and export_foil_to_template will now preserve formatting (except cell values), using xlutils.copy with formatting_info=True, and only overwrite cell values ---
+    def _copy_only_values_to_sheet(self, ws, rb_sheet, rowcolvals, date_cells_formats={}):
+        # rowcolvals: list of (row, col, value), for date cells, use date_cells_formats dict to format as string
+        for (row, col, value) in rowcolvals:
+            fmt = None
+            if (row, col) in date_cells_formats:
+                fmt = date_cells_formats[(row, col)]
+            if fmt:
+                # Format date string for Excel (write as string)
+                if isinstance(value, (int, float)):
+                    value = xlrd.xldate.xldate_as_datetime(value, 0).strftime(fmt)
+                elif isinstance(value, str):
+                    try:
+                        # Try parsing as xldate float
+                        val_float = float(value)
+                        value = xlrd.xldate.xldate_as_datetime(val_float, 0).strftime(fmt)
+                    except Exception:
+                        pass
+            ws.write(row, col, value)
+
     def export_inventory_to_template(self):
         template_path = self.config.get("total_export_template", "")
         export_folder = self.config.get("inventory_export_path", "")
@@ -555,32 +570,47 @@ class InventoryApp:
 
         stores = self.get_all_stores()
         item_names = self.template.get("item_names", [])
+        # Always export as MM-DD-YYYY string
         date_str = self.template.get("date", datetime.today().strftime("%m-%d-%Y"))
+        # If looks like Excel xldate float, format as string
+        try:
+            if date_str and isinstance(date_str, (int, float)):
+                date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
+            elif date_str and date_str.isdigit():
+                # Could be excel date as string
+                date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
+        except Exception:
+            pass
 
         out_path = os.path.join(export_folder, f"Final Inventory {date_str}.xls")
         shutil.copy(template_path, out_path)
         rb = xlrd.open_workbook(out_path, formatting_info=True)
         wb = xl_copy(rb)
         ws = wb.get_sheet(0)
+        rb_sheet = rb.sheet_by_index(0)
 
-        # To preserve formatting in pasted cells, we only write values, xlutils.copy keeps original formatting.
-        # Write date to the user-defined cell
+        # Prepare values to write (row, col, value)
+        rowcolvals = []
+        # Date cell
         date_row, date_col = self.parse_cell(areas.get("date_cell", "A2"))
-        ws.write(date_row, date_col, date_str)
+        rowcolvals.append((date_row, date_col, date_str))
+        date_cells_formats = {(date_row, date_col): "%m-%d-%Y"}
 
-        # Write items starting from user-defined cell
+        # Items
         item_row, item_col = self.parse_cell(areas.get("item_start_cell", "A5"))
         for i, item_display in enumerate(item_names):
-            ws.write(item_row + i, item_col, item_display)
+            rowcolvals.append((item_row + i, item_col, item_display))
 
-        # Write inventories by store
+        # Store inventories
         store_col_row, store_col_col = self.parse_cell(areas.get("store_col_start", "B5"))
         for store_idx, store in enumerate(stores):
             col = store_col_col + store_idx
             inv = self.data.get(store, {}).get("inventory", [""] * len(item_names))
             for row_idx in range(len(item_names)):
-                ws.write(item_row + row_idx, col, inv[row_idx] if row_idx < len(inv) else "")
+                rowcolvals.append((item_row + row_idx, col, inv[row_idx] if row_idx < len(inv) else ""))
 
+        # Only overwrite values, not formatting
+        self._copy_only_values_to_sheet(ws, rb_sheet, rowcolvals, date_cells_formats=date_cells_formats)
         wb.save(out_path)
         self.status.config(text=f"Inventory exported to {out_path}")
         messagebox.showinfo("Export Complete", f"Inventory exported to {out_path}")
@@ -598,24 +628,35 @@ class InventoryApp:
 
         stores = self.get_all_stores()
         date_str = self.template.get("date", datetime.today().strftime("%m-%d-%Y"))
+        try:
+            if date_str and isinstance(date_str, (int, float)):
+                date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
+            elif date_str and date_str.isdigit():
+                date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
+        except Exception:
+            pass
         out_path = os.path.join(export_folder, f"Foil Pan Order {date_str}.xls")
         shutil.copy(template_path, out_path)
         rb = xlrd.open_workbook(out_path, formatting_info=True)
         wb = xl_copy(rb)
         ws = wb.get_sheet(0)
+        rb_sheet = rb.sheet_by_index(0)
 
-        # Write date to the user-defined cell
+        # Prepare values to write (row, col, value)
+        rowcolvals = []
         date_row, date_col = self.parse_cell(areas.get("date_cell", "A2"))
-        ws.write(date_row, date_col, date_str)
+        rowcolvals.append((date_row, date_col, date_str))
+        date_cells_formats = {(date_row, date_col): "%m-%d-%Y"}
 
         # Write store and foil data starting from user-defined cell
         store_row, store_col = self.parse_cell(areas.get("store_start_cell", "B5"))
         for i, store in enumerate(stores):
-            ws.write(store_row + i, store_col, store)
+            rowcolvals.append((store_row + i, store_col, store))
             foil = self.data.get(store, {}).get("foil", [""] * 4)
             for j in range(4):
-                ws.write(store_row + i, store_col + 1 + j, foil[j] if len(foil) > j else "")
+                rowcolvals.append((store_row + i, store_col + 1 + j, foil[j] if len(foil) > j else ""))
 
+        self._copy_only_values_to_sheet(ws, rb_sheet, rowcolvals, date_cells_formats=date_cells_formats)
         wb.save(out_path)
         self.status.config(text=f"Foil pan order exported to {out_path}")
         messagebox.showinfo("Export Complete", f"Foil pan order exported to {out_path}")
@@ -628,9 +669,13 @@ class InventoryApp:
             self.status.config(text=self.status.cget("text") + " | Total Export Template set.")
 
     def open_table_editor(self):
+        # Load template fresh so it always shows current data
         if "item_names" not in self.template or not self.template["item_names"]:
-            messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
-            return
+            # Try to load from template file if not already loaded
+            self.import_template()
+            if "item_names" not in self.template or not self.template["item_names"]:
+                messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
+                return
 
         item_names = self.template["item_names"]
         n_items = len(item_names)
@@ -639,9 +684,18 @@ class InventoryApp:
             return
 
         stores = self.get_all_stores()
+        # If there is no inventory for any store, initialize blank
+        for store in stores:
+            if store not in self.data:
+                self.data[store] = {"inventory": [""] * n_items, "foil": [""] * 4}
+            else:
+                inv = self.data[store].get("inventory", [])
+                if len(inv) < n_items:
+                    inv = inv + [""] * (n_items - len(inv))
+                self.data[store]["inventory"] = inv[:n_items]
+
         editor = tk.Toplevel(self.root)
         editor.title("Inventory Data Table Editor")
-        # --- Fix table editor window sizing (reasonably compact, but resizable) ---
         preferred_width = min(1400, max(900, 300 + len(stores) * 45))
         preferred_height = min(800, max(400, 40 + n_items * 22))
         editor.geometry(f"{preferred_width}x{preferred_height}")
@@ -651,7 +705,6 @@ class InventoryApp:
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
-        # Font settings: Increase font size by 1pt (was 7, now 8)
         font_size = 8
         table_font = ("Arial", font_size)
         heading_font = ("Arial", font_size + 1, "bold")
@@ -659,12 +712,10 @@ class InventoryApp:
         style = ttk.Style(editor)
         style.configure("Treeview", font=table_font, rowheight=19)
         style.configure("Treeview.Heading", font=heading_font)
-
-        # Less padding between columns for compactness
         style.layout("Treeview.Cell", [
             ('Treeitem.padding', {'sticky': 'nswe', 'children': [
                 ('Treeitem.image', {'side': 'left', 'sticky': ''}),
-                ('Treeitem.text', {'side': 'left', 'sticky': '', 'padding': [1, 0, 1, 0]}),  # minimal padding
+                ('Treeitem.text', {'side': 'left', 'sticky': '', 'padding': [1, 0, 1, 0]}),
             ]})
         ])
 
@@ -693,6 +744,10 @@ class InventoryApp:
             else:
                 tree.column(col, width=44, anchor='center', minwidth=25, stretch=True)
         tree.pack(side="left", fill="both", expand=True)
+
+        # Clear all rows before inserting
+        for rowid in tree.get_children():
+            tree.delete(rowid)
 
         for idx, item_name in enumerate(item_names):
             row_vals = [item_name]
@@ -748,7 +803,6 @@ class InventoryApp:
         savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
         savebtn.pack(side="bottom", pady=5)
 
-        # Allow maximizing and dynamically resizing columns
         def resize_columns(event=None):
             width = editor.winfo_width()
             n_store_cols = max(1, len(stores))
