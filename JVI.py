@@ -271,9 +271,19 @@ class InventoryApp:
 
         # Make window maximizable and resizable
         self.root.update()
-        self.root.minsize(1000, 700)
-        self.root.geometry("1200x800")
+        # --- Fix main window sizing to fit content, not excessively large ---
+        preferred_width = 800
+        preferred_height = 600
+        self.root.minsize(600, 400)
+        self.root.geometry(f"{preferred_width}x{preferred_height}")
         self.root.resizable(True, True)
+        # Optionally center the window on screen (cross-platform)
+        self.root.update_idletasks()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x = (screen_width // 2) - (preferred_width // 2)
+        y = (screen_height // 2) - (preferred_height // 2)
+        self.root.geometry(f"+{x}+{y}")
 
     def update_store_status_display(self):
         check, cross = "\u2714", "\u2716"
@@ -531,6 +541,7 @@ class InventoryApp:
             except Exception as e:
                 messagebox.showerror("Import Error", f"Failed to import data: {e}")
 
+    # --- PATCH BELOW: export_inventory_to_template and export_foil_to_template will now preserve formatting (except cell values), using xlutils.copy with formatting_info=True, and only overwrite cell values ---
     def export_inventory_to_template(self):
         template_path = self.config.get("total_export_template", "")
         export_folder = self.config.get("inventory_export_path", "")
@@ -552,6 +563,7 @@ class InventoryApp:
         wb = xl_copy(rb)
         ws = wb.get_sheet(0)
 
+        # To preserve formatting in pasted cells, we only write values, xlutils.copy keeps original formatting.
         # Write date to the user-defined cell
         date_row, date_col = self.parse_cell(areas.get("date_cell", "A2"))
         ws.write(date_row, date_col, date_str)
@@ -560,6 +572,7 @@ class InventoryApp:
         item_row, item_col = self.parse_cell(areas.get("item_start_cell", "A5"))
         for i, item_display in enumerate(item_names):
             ws.write(item_row + i, item_col, item_display)
+
         # Write inventories by store
         store_col_row, store_col_col = self.parse_cell(areas.get("store_col_start", "B5"))
         for store_idx, store in enumerate(stores):
@@ -628,7 +641,13 @@ class InventoryApp:
         stores = self.get_all_stores()
         editor = tk.Toplevel(self.root)
         editor.title("Inventory Data Table Editor")
-        editor.geometry("1400x800")
+        # --- Fix table editor window sizing (reasonably compact, but resizable) ---
+        preferred_width = min(1400, max(900, 300 + len(stores) * 45))
+        preferred_height = min(800, max(400, 40 + n_items * 22))
+        editor.geometry(f"{preferred_width}x{preferred_height}")
+        editor.minsize(600, 320)
+        editor.resizable(True, True)
+
         editor_frame = ttk.Frame(editor, padding=10)
         editor_frame.pack(fill='both', expand=True)
 
