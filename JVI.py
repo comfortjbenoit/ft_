@@ -669,151 +669,144 @@ class InventoryApp:
             self.status.config(text=self.status.cget("text") + " | Total Export Template set.")
 
     def open_table_editor(self):
-        # Load template fresh so it always shows current data
-        if "item_names" not in self.template or not self.template["item_names"]:
-            # Try to load from template file if not already loaded
-            self.import_template()
+        try:
             if "item_names" not in self.template or not self.template["item_names"]:
+                self.status.config(text="No template or item names loaded for table editor.")
                 messagebox.showerror("No Template", "You must import a template before editing inventory in table view.")
                 return
 
-        item_names = self.template["item_names"]
-        n_items = len(item_names)
-        if not item_names:
-            messagebox.showerror("No Item Names", "No item names found in template.")
-            return
-
-        stores = self.get_all_stores()
-        # If there is no inventory for any store, initialize blank
-        for store in stores:
-            if store not in self.data:
-                self.data[store] = {"inventory": [""] * n_items, "foil": [""] * 4}
-            else:
-                inv = self.data[store].get("inventory", [])
-                if len(inv) < n_items:
-                    inv = inv + [""] * (n_items - len(inv))
-                self.data[store]["inventory"] = inv[:n_items]
-
-        editor = tk.Toplevel(self.root)
-        editor.title("Inventory Data Table Editor")
-        preferred_width = min(1400, max(900, 300 + len(stores) * 45))
-        preferred_height = min(800, max(400, 40 + n_items * 22))
-        editor.geometry(f"{preferred_width}x{preferred_height}")
-        editor.minsize(600, 320)
-        editor.resizable(True, True)
-
-        editor_frame = ttk.Frame(editor, padding=10)
-        editor_frame.pack(fill='both', expand=True)
-
-        font_size = 8
-        table_font = ("Arial", font_size)
-        heading_font = ("Arial", font_size + 1, "bold")
-
-        style = ttk.Style(editor)
-        style.configure("Treeview", font=table_font, rowheight=19)
-        style.configure("Treeview.Heading", font=heading_font)
-        style.layout("Treeview.Cell", [
-            ('Treeitem.padding', {'sticky': 'nswe', 'children': [
-                ('Treeitem.image', {'side': 'left', 'sticky': ''}),
-                ('Treeitem.text', {'side': 'left', 'sticky': '', 'padding': [1, 0, 1, 0]}),
-            ]})
-        ])
-
-        xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
-        xscroll.pack(side="bottom", fill="x")
-        yscroll = tk.Scrollbar(editor_frame, orient="vertical")
-        yscroll.pack(side="right", fill="y")
-
-        columns = ["Item"] + stores
-        tree = ttk.Treeview(
-            editor_frame,
-            columns=columns,
-            show="headings",
-            height=min(len(item_names), 25),
-            xscrollcommand=xscroll.set,
-            yscrollcommand=yscroll.set,
-            style="Treeview"
-        )
-        xscroll.config(command=tree.xview)
-        yscroll.config(command=tree.yview)
-
-        for col in columns:
-            tree.heading(col, text=col)
-            if col == "Item":
-                tree.column(col, width=300, anchor='w', minwidth=120, stretch=True)
-            else:
-                tree.column(col, width=44, anchor='center', minwidth=25, stretch=True)
-        tree.pack(side="left", fill="both", expand=True)
-
-        # Clear all rows before inserting
-        for rowid in tree.get_children():
-            tree.delete(rowid)
-
-        for idx, item_name in enumerate(item_names):
-            row_vals = [item_name]
-            for store in stores:
-                inv = self.data.get(store, {}).get("inventory", [""] * n_items)
-                val = inv[idx] if idx < len(inv) else ""
-                row_vals.append(str(val))
-            tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
-
-        def on_double_click(event):
-            region = tree.identify("region", event.x, event.y)
-            if region != "cell":
+            item_names = self.template["item_names"]
+            n_items = len(item_names)
+            if not item_names:
+                self.status.config(text="No item names found in template.")
+                messagebox.showerror("No Item Names", "No item names found in template.")
                 return
-            rowid = tree.identify_row(event.y)
-            col = tree.identify_column(event.x)
-            col_index = int(col.replace("#", "")) - 1
-            if rowid == "" or col_index == 0:
+
+            stores = self.get_all_stores()
+            if not stores:
+                self.status.config(text="No stores configured.")
+                messagebox.showerror("No Stores", "No stores are configured in settings.")
                 return
-            x, y, width, height = tree.bbox(rowid, col)
-            value = tree.set(rowid, columns[col_index])
-            entry = tk.Entry(tree, width=8, font=table_font)
-            entry.place(x=x, y=y, width=width, height=height)
-            entry.insert(0, value)
-            entry.focus()
 
-            def on_entry_confirm(event=None):
-                newval = entry.get()
-                tree.set(rowid, columns[col_index], newval)
-                entry.destroy()
+            editor = tk.Toplevel(self.root)
+            editor.title("Inventory Data Table Editor")
+            editor.geometry("1400x800")
+            editor_frame = ttk.Frame(editor, padding=10)
+            editor_frame.pack(fill='both', expand=True)
 
-            entry.bind("<Return>", on_entry_confirm)
-            entry.bind("<FocusOut>", lambda e: entry.destroy())
+            # Font settings: Increase font size by 1pt (was 7, now 8)
+            font_size = 8
+            table_font = ("Arial", font_size)
+            heading_font = ("Arial", font_size + 1, "bold")
 
-        tree.bind("<Double-1>", on_double_click)
+            style = ttk.Style(editor)
+            style.configure("Treeview", font=table_font, rowheight=19)
+            style.configure("Treeview.Heading", font=heading_font)
+            style.layout("Treeview.Cell", [
+                ('Treeitem.padding', {'sticky': 'nswe', 'children': [
+                    ('Treeitem.image', {'side': 'left', 'sticky': ''}),
+                    ('Treeitem.text', {'side': 'left', 'sticky': '', 'padding': [1, 0, 1, 0]}),
+                ]})
+            ])
 
-        def save_table_edits():
-            for idx, rowid in enumerate(tree.get_children()):
-                values = tree.item(rowid)["values"]
-                for col_idx, store in enumerate(stores, start=1):
-                    val = values[col_idx]
+            xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
+            xscroll.pack(side="bottom", fill="x")
+            yscroll = tk.Scrollbar(editor_frame, orient="vertical")
+            yscroll.pack(side="right", fill="y")
+
+            columns = ["Item"] + stores
+            tree = ttk.Treeview(
+                editor_frame,
+                columns=columns,
+                show="headings",
+                height=min(len(item_names), 25),
+                xscrollcommand=xscroll.set,
+                yscrollcommand=yscroll.set,
+                style="Treeview"
+            )
+            xscroll.config(command=tree.xview)
+            yscroll.config(command=tree.yview)
+
+            for col in columns:
+                tree.heading(col, text=col)
+                if col == "Item":
+                    tree.column(col, width=300, anchor='w', minwidth=120, stretch=True)
+                else:
+                    tree.column(col, width=44, anchor='center', minwidth=25, stretch=True)
+            tree.pack(side="left", fill="both", expand=True)
+
+            # Debug: status
+            self.status.config(text=f"Table editor: {len(item_names)} items, {len(stores)} stores.")
+
+            # Insert rows
+            for idx, item_name in enumerate(item_names):
+                row_vals = [item_name]
+                for store in stores:
                     inv = self.data.get(store, {}).get("inventory", [""] * n_items)
-                    while len(inv) < n_items:
-                        inv.append("")
-                    inv[idx] = val
-                    foil = self.data.get(store, {}).get("foil", [""]*4)
-                    self.data[store] = {"inventory": inv, "foil": foil}
-            self.save_data()
-            self.update_store_status_display()
-            messagebox.showinfo("Saved", "All table edits have been saved.")
-            editor.lift()
-            self.status.config(text="All table edits saved.")
+                    val = inv[idx] if idx < len(inv) else ""
+                    row_vals.append(str(val))
+                tree.insert("", "end", values=row_vals, tags=(f"row_{idx}",))
 
-        savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
-        savebtn.pack(side="bottom", pady=5)
+            def on_double_click(event):
+                region = tree.identify("region", event.x, event.y)
+                if region != "cell":
+                    return
+                rowid = tree.identify_row(event.y)
+                col = tree.identify_column(event.x)
+                col_index = int(col.replace("#", "")) - 1
+                if rowid == "" or col_index == 0:
+                    return
+                x, y, width, height = tree.bbox(rowid, col)
+                value = tree.set(rowid, columns[col_index])
+                entry = tk.Entry(tree, width=8, font=table_font)
+                entry.place(x=x, y=y, width=width, height=height)
+                entry.insert(0, value)
+                entry.focus()
 
-        def resize_columns(event=None):
-            width = editor.winfo_width()
-            n_store_cols = max(1, len(stores))
-            item_col_width = min(400, max(150, int(width * 0.35)))
-            store_col_width = max(25, int((width - item_col_width - 60) / n_store_cols))
-            tree.column("Item", width=item_col_width)
-            for col in stores:
-                tree.column(col, width=store_col_width)
+                def on_entry_confirm(event=None):
+                    newval = entry.get()
+                    tree.set(rowid, columns[col_index], newval)
+                    entry.destroy()
 
-        editor.bind('<Configure>', resize_columns)
-        resize_columns()
+                entry.bind("<Return>", on_entry_confirm)
+                entry.bind("<FocusOut>", lambda e: entry.destroy())
+
+            tree.bind("<Double-1>", on_double_click)
+
+            def save_table_edits():
+                for idx, rowid in enumerate(tree.get_children()):
+                    values = tree.item(rowid)["values"]
+                    for col_idx, store in enumerate(stores, start=1):
+                        val = values[col_idx]
+                        inv = self.data.get(store, {}).get("inventory", [""] * n_items)
+                        while len(inv) < n_items:
+                            inv.append("")
+                        inv[idx] = val
+                        foil = self.data.get(store, {}).get("foil", [""]*4)
+                        self.data[store] = {"inventory": inv, "foil": foil}
+                self.save_data()
+                self.update_store_status_display()
+                messagebox.showinfo("Saved", "All table edits have been saved.")
+                editor.lift()
+                self.status.config(text="All table edits saved.")
+
+            savebtn = ttk.Button(editor_frame, text="Save All Changes", command=save_table_edits)
+            savebtn.pack(side="bottom", pady=5)
+
+            def resize_columns(event=None):
+                width = editor.winfo_width()
+                n_store_cols = max(1, len(stores))
+                item_col_width = min(400, max(150, int(width * 0.35)))
+                store_col_width = max(25, int((width - item_col_width - 60) / n_store_cols))
+                tree.column("Item", width=item_col_width)
+                for col in stores:
+                    tree.column(col, width=store_col_width)
+
+            editor.bind('<Configure>', resize_columns)
+            resize_columns()
+        except Exception as e:
+            self.status.config(text=f"Error in table editor: {e}")
+            messagebox.showerror("Table Editor Error", f"An error occurred in the table editor:\n{e}")
 
     def manage_stores(self):
         def refresh_lists():
