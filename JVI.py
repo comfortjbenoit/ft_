@@ -557,63 +557,118 @@ class InventoryApp:
                         pass
             ws.write(row, col, value)
 
-    def export_inventory_to_template(self):
-        template_path = self.config.get("total_export_template", "")
-        export_folder = self.config.get("inventory_export_path", "")
-        areas = self.config.get("export_inventory_areas", {})
-        if not template_path or not os.path.exists(template_path):
-            messagebox.showerror("Error", "No inventory template set or file does not exist.")
-            return
-        if not export_folder or not os.path.exists(export_folder):
-            messagebox.showerror("Error", "No inventory export folder set or folder does not exist.")
-            return
+    def export_inventory_to_template(self): 
+    template_path = self.config.get("total_export_template", "")
+    export_folder = self.config.get("inventory_export_path", "")
+    areas = self.config.get("export_inventory_areas", {})
 
-        stores = self.get_all_stores()
-        item_names = self.template.get("item_names", [])
-        # Always export as MM-DD-YYYY string
-        date_str = self.template.get("date", datetime.today().strftime("%m-%d-%Y"))
-        # If looks like Excel xldate float, format as string
-        try:
-            if date_str and isinstance(date_str, (int, float)):
-                date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
-            elif date_str and date_str.isdigit():
-                # Could be excel date as string
-                date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
-        except Exception:
-            pass
+    if not template_path or not os.path.exists(template_path):
+        messagebox.showerror("Error", "No inventory template set or file does not exist.")
+        return
+    if not export_folder or not os.path.exists(export_folder):
+        messagebox.showerror("Error", "No inventory export folder set or folder does not exist.")
+        return
 
-        out_path = os.path.join(export_folder, f"Final Inventory {date_str}.xls")
-        shutil.copy(template_path, out_path)
-        rb = xlrd.open_workbook(out_path, formatting_info=True)
-        wb = xl_copy(rb)
-        ws = wb.get_sheet(0)
-        rb_sheet = rb.sheet_by_index(0)
+    stores = self.get_all_stores()
+    item_names = self.template.get("item_names", [])
+    date_str = self.template.get("date", datetime.today().strftime("%m-%d-%Y"))
 
-        # Prepare values to write (row, col, value)
-        rowcolvals = []
-        # Date cell
-        date_row, date_col = self.parse_cell(areas.get("date_cell", "A2"))
-        rowcolvals.append((date_row, date_col, date_str))
-        date_cells_formats = {(date_row, date_col): "%m-%d-%Y"}
+    try:
+        if date_str and isinstance(date_str, (int, float)):
+            date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
+        elif date_str and date_str.isdigit():
+            date_str = xlrd.xldate.xldate_as_datetime(float(date_str), 0).strftime("%m-%d-%Y")
+    except Exception:
+        pass
 
-        # Items
-        item_row, item_col = self.parse_cell(areas.get("item_start_cell", "A5"))
-        for i, item_display in enumerate(item_names):
-            rowcolvals.append((item_row + i, item_col, item_display))
+    out_path = os.path.join(export_folder, f"Final Inventory {date_str}.xls")
+    shutil.copy(template_path, out_path)
+    rb = xlrd.open_workbook(out_path, formatting_info=True)
+    wb = xl_copy(rb)
+    ws = wb.get_sheet(0)
+    rb_sheet = rb.sheet_by_index(0)
 
-        # Store inventories
-        store_col_row, store_col_col = self.parse_cell(areas.get("store_col_start", "B5"))
-        for store_idx, store in enumerate(stores):
-            col = store_col_col + store_idx
-            inv = self.data.get(store, {}).get("inventory", [""] * len(item_names))
-            for row_idx in range(len(item_names)):
-                rowcolvals.append((item_row + row_idx, col, inv[row_idx] if row_idx < len(inv) else ""))
+    # Prepare values to write (row, col, value)
+    rowcolvals = []
+    date_row, date_col = self.parse_cell(areas.get("date_cell", "A2"))
+    rowcolvals.append((date_row, date_col, date_str))
+    date_cells_formats = {(date_row, date_col): "%m-%d-%Y"}
 
-        # Only overwrite values, not formatting
-        self._copy_only_values_to_sheet(ws, rb_sheet, rowcolvals, date_cells_formats=date_cells_formats)
-        wb.save(out_path)
-        self.status.config(text=f"Inventory exported to {out_path}")
-        messagebox.showinfo("Export Complete", f"Inventory exported to {out_path}")
+    item_row, item_col = self.parse_cell(areas.get("item_start_cell", "A5"))
+    for i, item_display in enumerate(item_names):
+        rowcolvals.append((item_row + i, item_col, item_display))
+
+    store_col_row, store_col_col = self.parse_cell(areas.get("store_col_start", "B5"))
+    for store_idx, store in enumerate(stores):
+        col = store_col_col + store_idx
+        inv = self.data.get(store, {}).get("inventory", [""] * len(item_names))
+        for row_idx in range(len(item_names)):
+            rowcolvals.append((item_row + row_idx, col, inv[row_idx] if row_idx < len(inv) else ""))
+
+    self._copy_only_values_to_sheet(ws, rb_sheet, rowcolvals, date_cells_formats=date_cells_formats)
+
+    # === FORMATTING STARTS HERE ===
+
+    import xlwt
+
+    # Style A2
+    style_a2 = xlwt.XFStyle()
+    font_a2 = xlwt.Font()
+    font_a2.name = 'Arial'
+    font_a2.height = 12 * 20
+    style_a2.font = font_a2
+    align_center = xlwt.Alignment()
+    align_center.horz = xlwt.Alignment.HORZ_CENTER
+    align_center.vert = xlwt.Alignment.VERT_CENTER
+    style_a2.alignment = align_center
+    ws.write(date_row, date_col, date_str, style_a2)
+
+    # Style A5:A34
+    style_a_col = xlwt.XFStyle()
+    font_a = xlwt.Font()
+    font_a.name = 'Times New Roman'
+    font_a.height = 9 * 20
+    style_a_col.font = font_a
+    align_left = xlwt.Alignment()
+    align_left.horz = xlwt.Alignment.HORZ_LEFT
+    align_left.vert = xlwt.Alignment.VERT_CENTER
+    style_a_col.alignment = align_left
+    for i in range(len(item_names)):
+        ws.write(item_row + i, item_col, item_names[i], style_a_col)
+
+    # Style B5:AE34
+    style_b_to_ae = xlwt.XFStyle()
+    font_b = xlwt.Font()
+    font_b.name = 'Arial Narrow'
+    font_b.height = 8 * 20
+    style_b_to_ae.font = font_b
+    style_b_to_ae.alignment = align_center
+    borders = xlwt.Borders()
+    borders.left = borders.right = borders.top = borders.bottom = xlwt.Borders.THIN
+    borders.inner = xlwt.Borders.DOTTED
+    style_b_to_ae.borders = borders
+    for row_idx in range(len(item_names)):
+        for col in range(store_col_col, store_col_col + len(stores)):
+            val = self.data.get(stores[col - store_col_col], {}).get("inventory", [""] * len(item_names))[row_idx]
+            ws.write(item_row + row_idx, col, val, style_b_to_ae)
+
+    # Style and formula AF5:AF34
+    style_af = xlwt.XFStyle()
+    font_af = xlwt.Font()
+    font_af.name = 'Arial'
+    font_af.height = 8 * 20
+    style_af.font = font_af
+    style_af.alignment = align_center
+    for row_idx in range(len(item_names)):
+        excel_row = item_row + row_idx + 1  # Excel rows are 1-based
+        formula = f"SUM(B{excel_row}:AE{excel_row})"
+        ws.write(item_row + row_idx, store_col_col + len(stores), xlwt.Formula(formula), style_af)
+
+    # === END FORMATTING ===
+
+    wb.save(out_path)
+    self.status.config(text=f"Inventory exported to {out_path}")
+    messagebox.showinfo("Export Complete", f"Inventory exported to {out_path}")
 
     def export_foil_to_template(self):
         template_path = self.config.get("foil_template", "")
