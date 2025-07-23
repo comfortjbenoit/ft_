@@ -609,8 +609,6 @@ class InventoryApp:
 
         # === FORMATTING STARTS HERE ===
 
-        import xlwt
-
         # Style A2
         style_a2 = xlwt.XFStyle()
         font_a2 = xlwt.Font()
@@ -624,7 +622,7 @@ class InventoryApp:
         ws.write(date_row, date_col, date_str, style_a2)
 
         # Style A5:A34
-    style_a_col = xlwt.XFStyle()
+        style_a_col = xlwt.XFStyle()
         font_a = xlwt.Font()
         font_a.name = 'Times New Roman'
         font_a.height = 9 * 20
@@ -855,6 +853,7 @@ class InventoryApp:
         except Exception as e:
             self.status.config(text=f"Error in table editor: {e}")
             messagebox.showerror("Table Editor Error", f"An error occurred in the table editor:\n{e}")
+
     def manage_stores(self):
         def refresh_lists():
             col1_list.delete(0, tk.END)
