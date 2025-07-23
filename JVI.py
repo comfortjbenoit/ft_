@@ -700,14 +700,9 @@ class InventoryApp:
             heading_font = ("Arial", font_size + 1, "bold")
 
             style = ttk.Style(editor)
-            style.configure("Treeview", font=table_font, rowheight=19)
-            style.configure("Treeview.Heading", font=heading_font)
-            style.layout("Treeview.Cell", [
-                ('Treeitem.padding', {'sticky': 'nswe', 'children': [
-                    ('Treeitem.image', {'side': 'left', 'sticky': ''}),
-                    ('Treeitem.text', {'side': 'left', 'sticky': '', 'padding': [1, 0, 1, 0]}),
-                ]})
-            ])
+            style.configure("Treeview", font=table_font, rowheight=19, padding=[0, 0, 0, 0])
+            style.configure("Treeview.Heading", font=heading_font, padding=[0, 0, 0, 0])
+            # DO NOT call style.layout("Treeview.Cell", ...)
 
             xscroll = tk.Scrollbar(editor_frame, orient="horizontal")
             xscroll.pack(side="bottom", fill="x")
@@ -732,13 +727,11 @@ class InventoryApp:
                 if col == "Item":
                     tree.column(col, width=300, anchor='w', minwidth=120, stretch=True)
                 else:
-                    tree.column(col, width=44, anchor='center', minwidth=25, stretch=True)
+                    tree.column(col, width=38, anchor='center', minwidth=20, stretch=True)
             tree.pack(side="left", fill="both", expand=True)
 
-            # Debug: status
             self.status.config(text=f"Table editor: {len(item_names)} items, {len(stores)} stores.")
 
-            # Insert rows
             for idx, item_name in enumerate(item_names):
                 row_vals = [item_name]
                 for store in stores:
@@ -797,7 +790,7 @@ class InventoryApp:
                 width = editor.winfo_width()
                 n_store_cols = max(1, len(stores))
                 item_col_width = min(400, max(150, int(width * 0.35)))
-                store_col_width = max(25, int((width - item_col_width - 60) / n_store_cols))
+                store_col_width = max(20, int((width - item_col_width - 60) / n_store_cols))
                 tree.column("Item", width=item_col_width)
                 for col in stores:
                     tree.column(col, width=store_col_width)
@@ -807,7 +800,6 @@ class InventoryApp:
         except Exception as e:
             self.status.config(text=f"Error in table editor: {e}")
             messagebox.showerror("Table Editor Error", f"An error occurred in the table editor:\n{e}")
-
     def manage_stores(self):
         def refresh_lists():
             col1_list.delete(0, tk.END)
